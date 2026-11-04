@@ -8,7 +8,7 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。MVP 將公開市場�
 
 | 模式 | 用途 | 寫入範圍 |
 |---|---|---|
-| GitHub Pages 公開預覽 | 免登入展示八個頁面、六種角色與合成資料 | 完全唯讀，沒有 API、資料庫或秘密 |
+| GitHub Pages 公開預覽 | 免登入展示六套角色工作台與合成資料 | 完全唯讀，沒有 API、資料庫或秘密 |
 | 本機 MVP Sandbox | 完整操作流程與 UAT | 只寫入本機 SQLite；ERP 僅讀取 fixture 並執行 Dry-run |
 
 公開預覽：<https://ws19135.github.io/group-buying-market-radar/>
@@ -23,6 +23,8 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。MVP 將公開市場�
 - 核准後建立 Promotion Draft，並對 ERP 合成快照執行 Dry-run
 - Request ID、前後狀態與 actor role 稽核紀錄；沒有 hard delete API
 - 同一前端自動辨識「公開唯讀」或「本機 Sandbox」模式
+- 六種角色各有專屬首頁、側邊選單、工作焦點、指標與色彩識別
+- SYSTEM_ADMIN／OPS_MANAGER／OPS_EDITOR 呈現不同內部作業流程；FINANCE／VENDOR／HOST 為專屬唯讀視角
 
 ## 資料流程
 
@@ -70,6 +72,7 @@ http://localhost:4173/?role=OPS_EDITOR#observations
 - [資料字典](docs/DATA_DICTIONARY.md)
 - [需求追溯矩陣](docs/RTM.md)
 - [UAT 計畫](docs/UAT_PLAN.md)
+- [同事展示指南](docs/COLLEAGUE_DEMO_GUIDE.md)
 - [ERP 整合契約](docs/INTEGRATION_CONTRACT.md)
 
 ## 測試
@@ -78,7 +81,7 @@ http://localhost:4173/?role=OPS_EDITOR#observations
 npm test
 ```
 
-測試涵蓋權限矩陣、正規化／SSRF 邊界、CSV、去重、UNKNOWN 評分、API 全流程、冪等、稽核、Promotion Dry-run 與禁止 hard delete。
+測試涵蓋六套角色體驗與導覽隔離、權限矩陣、正規化／SSRF 邊界、CSV、去重、UNKNOWN 評分、API 全流程、冪等、稽核、Promotion Dry-run 與禁止 hard delete。
 
 ## 授權
 

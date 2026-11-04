@@ -8,7 +8,7 @@
 | FR-04 版本化評分 | Vendor／KOL scorer | UNKNOWN scoring test | Done |
 | FR-05 人工審核 | review endpoint、RBAC、audit | forbidden／approve／audit tests | Done |
 | FR-06 Promotion Dry-run | draft + fixture executor | name-only conflict、end-to-end | Done |
-| FR-07 公開角色預覽 | dual-mode UI、six roles | permissions tests | Done |
+| FR-07 角色專屬工作台 | dual-mode UI、six distinct homes/navigation | permissions + role-experience tests | Done |
 | NFR 可追溯／可重現 | evidence、version、hash、request ID | domain／API tests | Done |
 | NFR 安全邊界 | Pages no API、CSP、body limit、URL guard | health boundary、URL tests | Done for MVP |
 | NFR 效能 10k／2s | 分頁與 indexes | 尚無 10k benchmark | Deferred |

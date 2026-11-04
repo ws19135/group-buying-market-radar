@@ -1,13 +1,9 @@
 import { ROLES, can, getRole, actionState as publicActionState } from "./permissions.js";
 import { stats as demoStats, observations as demoObservations, vendorLeads as demoVendorLeads, kolLeads as demoKolLeads, sources as demoSources } from "./data.js";
 import { RadarApi, newClientRequestId } from "./api-client.js";
+import { PAGE_CATALOG, canAccessRolePage, getRoleExperience } from "./role-experience.js";
 
-const navItems = [
-  { group: "情報中心", items: [["overview", "總", "市場總覽"], ["observations", "觀", "市場觀察"], ["vendors", "廠", "廠商線索"], ["kols", "K", "KOL 線索"]] },
-  { group: "營運作業", items: [["review", "審", "審核佇列"], ["sources", "源", "資料來源"], ["integration", "接", "ERP Dry-run"]] },
-  { group: "系統", items: [["permissions", "權", "權限預覽"]] },
-];
-const titles = Object.fromEntries(navItems.flatMap(group => group.items.map(([id, , text]) => [id, text])));
+const titles = Object.fromEntries(Object.entries(PAGE_CATALOG).map(([id, item]) => [id, item.label]));
 const labels = { OBSERVED: "已觀察", DISCOVERED: "待審核", SUBMITTED: "已送審", APPROVED: "已核准", REJECTED: "已拒絕", NEEDS_MORE_DATA: "待補資料", IGNORED: "不處理", DRY_RUN_READY: "待 Dry-run", DRY_RUN_COMPLETED: "Dry-run 完成", HEALTHY: "正常", UNKNOWN: "未知", PENDING: "待確認", COMPLETED: "完成", PARTIAL: "部分完成", FAILED: "失敗" };
 
 let role = getRole(location.search);
@@ -38,7 +34,7 @@ function actions(capability, text, command) { return `<div class="button-row"><b
 function toolbar(placeholder) { return `<div class="toolbar"><input class="search" data-search placeholder="${esc(placeholder)}"></div>`; }
 
 async function init() {
-  document.querySelector("#navigation").innerHTML = navItems.map(group => `<div class="nav-label">${group.group}</div>${group.items.map(([id, icon, text]) => `<button class="nav-item" data-page="${id}"><span class="nav-icon">${icon}</span><span>${text}</span></button>`).join("")}`).join("");
+  renderNavigation();
   roleSelect.innerHTML = Object.entries(ROLES).map(([key, value]) => `<option value="${key}">${value.label} · ${key}</option>`).join("");
   roleSelect.value = role;
   bindEvents();
@@ -49,7 +45,7 @@ async function init() {
 }
 
 function bindEvents() {
-  roleSelect.addEventListener("change", async () => { role = roleSelect.value; api.setRole(role); const url = new URL(location.href); url.searchParams.set("role", role); history.replaceState({}, "", url); if (api.connected) await refresh(); render(); });
+  roleSelect.addEventListener("change", async () => { role = roleSelect.value; api.setRole(role); const url = new URL(location.href); url.searchParams.set("role", role); url.hash = "overview"; history.replaceState({}, "", url); page = "overview"; if (api.connected) await refresh(); render(); });
   document.querySelector("#navigation").addEventListener("click", event => { const target = event.target.closest("[data-page]"); if (target) location.hash = target.dataset.page; });
   addEventListener("hashchange", () => { page = location.hash.slice(1) || "overview"; render(); });
   app.addEventListener("click", handleCommand);
@@ -74,6 +70,23 @@ function updateMode() {
   }
 }
 
+function renderNavigation() {
+  const experience = getRoleExperience(role);
+  document.querySelector("#navigation").innerHTML = experience.nav.map(group => `<div class="nav-label">${esc(group.group)}</div>${group.pages.map(id => { const item = PAGE_CATALOG[id]; return `<button class="nav-item" data-page="${id}"><span class="nav-icon">${esc(item.icon)}</span><span>${esc(id === "overview" ? experience.homeTitle : item.label)}</span></button>`; }).join("")}`).join("");
+}
+
+function updateRolePresentation(experience) {
+  document.body.dataset.role = role;
+  document.body.dataset.accent = experience.accent;
+  document.querySelector(".topbar .eyebrow").textContent = experience.eyebrow;
+  const banner = document.querySelector(".preview-banner");
+  banner.querySelector("strong").textContent = api.connected ? `${experience.homeTitle} · MVP Sandbox` : `${experience.homeTitle} · 公開預覽`;
+  banner.querySelector(".preview-badge").textContent = api.connected ? experience.badge : "NO WRITE";
+  roleSummary.textContent = api.connected && can(role, "review")
+    ? `以「${ROLES[role].label}」操作專屬工作台；每次異動均留下 Audit，正式 ERP 寫入持續封鎖。`
+    : `以「${ROLES[role].label}」檢視專屬工作台；此角色沒有資料異動權限。`;
+}
+
 async function refresh() {
   state.loading = true;
   if (!api.connected) {
@@ -93,9 +106,16 @@ async function refresh() {
 }
 
 function render() {
-  if (!titles[page]) page = "overview";
-  pageTitle.textContent = titles[page];
-  roleSummary.textContent = api.connected ? `以「${ROLES[role].label}」操作本機 Sandbox；異動均留 Audit，ERP 正式寫入持續封鎖。` : `以「${ROLES[role].label}」檢視；公開站不會寫入資料。`;
+  const experience = getRoleExperience(role);
+  if (!titles[page] || !canAccessRolePage(role, page)) {
+    page = "overview";
+    const url = new URL(location.href);
+    url.hash = "overview";
+    history.replaceState({}, "", url);
+  }
+  renderNavigation();
+  updateRolePresentation(experience);
+  pageTitle.textContent = page === "overview" ? experience.homeTitle : titles[page];
   document.querySelectorAll("[data-page]").forEach(item => item.classList.toggle("active", item.dataset.page === page));
   app.innerHTML = state.loading ? '<div class="panel loading-state">正在載入資料…</div>' : (views[page] || views.overview)();
 }
@@ -111,12 +131,59 @@ const views = {
   permissions: () => `${heading("角色權限與執行模式", api.connected ? "Sandbox 依角色開啟功能；外部角色仍只有檢視權。" : "公開站可預覽全部角色，但 Mutation 一律關閉。")}<div class="grid permission-grid">${Object.entries(ROLES).map(([key, value]) => `<article class="panel permission-card ${key === role ? "active" : ""}"><h3>${value.label}</h3><p>${key} · ${value.short}</p><div class="chips">${["view", "review", "approve", "source_admin", "integration_dry_run"].map(capability => `<span class="badge ${can(key, capability) ? "green" : ""}">${can(key, capability) ? "✓" : "—"} ${capability}</span>`).join("")}</div></article>`).join("")}</div><div class="notice" style="margin-top:16px">角色選單只供 Sandbox 驗證，不是正式登入。Production 仍須獨立身份驗證與短效憑證。</div>`,
 };
 
+function roleAction([command, capability, label, destination]) {
+  if (command === "go-page") return `<button class="btn btn-secondary" data-command="go-page" data-id="${esc(destination)}">${esc(label)}</button>`;
+  if (command === "export") return `<button class="btn btn-secondary" data-command="export">${esc(label)}</button>`;
+  return button(command, capability, label, { primary: command !== "open-import" });
+}
+
+function metricValue(dashboard, key, suffix = "") {
+  const value = dashboard[key];
+  if (value === null || value === undefined) return "資料不足";
+  return `${value}${suffix}`;
+}
+
+function renderRoleOverview() {
+  const experience = getRoleExperience(role);
+  const dashboard = state.dashboard || {};
+  const cards = experience.metrics.map(([name, key, detail, tone, suffix = ""]) => [name, metricValue(dashboard, key, suffix), detail, tone]);
+  const permissionText = can(role, "approve") ? "可核准" : can(role, "review") ? "可建立／送審" : "唯讀檢視";
+  return `
+    <section class="role-hero role-${experience.accent}">
+      <div>
+        <span class="role-kicker">${esc(experience.eyebrow)}</span>
+        <h2>${esc(experience.homeTitle)}</h2>
+        <p>${esc(experience.description)}</p>
+      </div>
+      <div class="role-identity">
+        <span>${esc(ROLES[role].label)}</span>
+        <strong>${esc(permissionText)}</strong>
+        <small>${esc(role)}</small>
+      </div>
+    </section>
+    ${heading("角色專屬摘要", api.connected ? "資料來自本機 SQLite Sandbox。" : "公開 Pages 使用合成資料，所有操作保持唯讀。", `<div class="button-row">${experience.actions.map(roleAction).join("")}</div>`)}
+    <div class="grid stats">${cards.map(([name, value, detail, tone]) => `<article class="stat" style="--accent:var(--${tone});--accent-soft:var(--${tone}-soft,#f1efff)"><span class="stat-label">${esc(name)}</span><div class="stat-value">${esc(value)}</div><span class="stat-delta">${esc(detail)}</span></article>`).join("")}</div>
+    <div class="grid two-col role-panels">
+      <article class="panel">
+        <div class="panel-head"><h3>${esc(experience.focusTitle)}</h3><span>${esc(permissionText)}</span></div>
+        <div class="panel-body role-focus">${experience.focusItems.map(([title, detail], index) => `<div class="focus-item"><b>${index + 1}</b><div><strong>${esc(title)}</strong><span>${esc(detail)}</span></div></div>`).join("")}</div>
+      </article>
+      <article class="panel">
+        <div class="panel-head"><h3>${esc(experience.boundaryTitle)}</h3><span>固定護欄</span></div>
+        <div class="panel-body activity">${experience.boundaryItems.map(([title, detail]) => `<div class="activity-item"><i></i><div><strong>${esc(title)}</strong><span>${esc(detail)}</span></div></div>`).join("")}</div>
+      </article>
+    </div>`;
+}
+
+views.overview = renderRoleOverview;
+
 function renderLeads(type, leads, title, description) { return `${heading(title, description, button("rebuild-leads", "review", "重新計算線索"))}${toolbar(`搜尋${type === "VENDOR" ? "廠商或品類" : "KOL、平台或領域"}…`)}${table([type === "VENDOR" ? "廠商" : "KOL", "公開資料", "Observation", "分數／充分度", "階段", "最後觀察"], leads.map(item => `<tr><td><span class="strong">${esc(item.canonical_name)}</span><span class="subtle">${esc(item.lead_id)}</span></td><td>${esc(item.metadata?.category || item.metadata?.platform || "資料不足")}</td><td>${esc(item.metadata?.observation_count ?? "資料不足")}</td><td>${score(item.score, item.data_sufficiency)}</td><td>${badge(item.stage)}</td><td>${date(item.last_observed_at || item.metadata?.last_observed_at)}</td></tr>`))}`; }
 
 async function handleCommand(event) {
   const target = event.target.closest("[data-command]");
   if (!target || target.disabled) return;
   try {
+    if (target.dataset.command === "go-page") { location.hash = target.dataset.id || "overview"; return; }
     if (target.dataset.command === "export") return exportPage();
     if (target.dataset.command === "open-observation") return openObservation();
     if (target.dataset.command === "open-import") return openImport();

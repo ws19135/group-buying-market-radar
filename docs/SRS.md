@@ -82,7 +82,9 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 ### FR-07 公開角色預覽
 
 - 不顯示登入入口，透過角色選單或 `?role=` 切換角色。
-- 所有角色都能開啟所有頁面以便審閱 UI 差異。
+- 每個角色必須有不同的首頁名稱、導覽選單、工作焦點、指標與角色說明。
+- SYSTEM_ADMIN 可見完整治理、資料、審核與整合頁面；OPS_MANAGER 聚焦審核與 Promotion；OPS_EDITOR 聚焦採集、整理與送審。
+- FINANCE、VENDOR、HOST 僅顯示與自身視角相關的頁面，且所有 mutation 保持 disabled。
 - 所有可能改變狀態的操作都必須 disabled 或回覆 dry-run 提示。
 - 僅可使用合成或已匿名化展示資料。
 
@@ -113,7 +115,7 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 | 驗收條件 | 狀態 | 證據 |
 |---|---|---|
 | 公開 URL 可免登入開啟 | Done | GitHub Pages |
-| 六種角色均可切換，所有頁面都可顯示 | Done | 共用前端與 permission tests |
+| 六種角色均可切換，且呈現六套不同工作台 | Done | role-experience tests 與瀏覽器逐角色驗證 |
 | 所有動作在公開站都不造成寫入 | Done | Pages 無 API；UI 自動進入 READ-ONLY |
 | Observation、Lead、Review、Source、ERP Dry-run 頁面齊全 | Done | 八頁 UI |
 | README 顯示資料流程圖 | Done | `docs/assets/market-radar-flow.png` |
