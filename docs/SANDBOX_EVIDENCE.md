@@ -2,6 +2,8 @@
 
 日期：2026-11-04
 
+> 本文件只證明 Foundation 流程驗證通過，不代表重新定義後的完整 MVP 通過。真實市場發現、商品－KOL 關聯、Vendor enrichment 與預計開發名單尚無完成證據。
+
 ## 自動驗證
 
 - `npm run check`：syntax check 通過。

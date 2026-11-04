@@ -96,7 +96,7 @@ export function createRadarServer({
           throw Object.assign(new Error("Sandbox 寫入已停用"), { status: 403, code: "SANDBOX_WRITE_DISABLED" });
         }
         if (request.method === "GET" && url.pathname === "/api/v1/health") {
-          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
+          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", mvp_status: "FOUNDATION", real_market_discovery_enabled: false, live_collectors: 0, write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
         }
         if (request.method === "GET" && url.pathname === "/api/v1/dashboard") {
           requireCapability(context, "view");

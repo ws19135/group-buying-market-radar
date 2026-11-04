@@ -59,14 +59,14 @@ function updateMode() {
   const mode = document.querySelector("#sidebar-mode");
   const detail = document.querySelector("#sidebar-mode-detail");
   if (api.connected) {
-    mode.textContent = "MVP Sandbox 已連線";
-    detail.textContent = "本機 SQLite · Production 未觸碰";
+    mode.textContent = "MVP 流程基礎版";
+    detail.textContent = "真實市場採集器尚未啟用";
     document.querySelector(".preview-banner").classList.add("sandbox");
-    document.querySelector(".preview-banner strong").textContent = "可操作 MVP Sandbox";
+    document.querySelector(".preview-banner strong").textContent = "流程基礎版 Sandbox";
     document.querySelector(".preview-badge").textContent = "LOCAL WRITE";
   } else {
-    mode.textContent = "公開展示模式";
-    detail.textContent = "合成資料 · 完全唯讀";
+    mode.textContent = "MVP 規格展示";
+    detail.textContent = "合成資料 · 真實採集待建";
   }
 }
 
@@ -80,11 +80,11 @@ function updateRolePresentation(experience) {
   document.body.dataset.accent = experience.accent;
   document.querySelector(".topbar .eyebrow").textContent = experience.eyebrow;
   const banner = document.querySelector(".preview-banner");
-  banner.querySelector("strong").textContent = api.connected ? `${experience.homeTitle} · MVP Sandbox` : `${experience.homeTitle} · 公開預覽`;
+  banner.querySelector("strong").textContent = api.connected ? `${experience.homeTitle} · 流程基礎版` : `${experience.homeTitle} · 規格預覽`;
   banner.querySelector(".preview-badge").textContent = api.connected ? experience.badge : "NO WRITE";
   roleSummary.textContent = api.connected && can(role, "review")
-    ? `以「${ROLES[role].label}」操作專屬工作台；每次異動均留下 Audit，正式 ERP 寫入持續封鎖。`
-    : `以「${ROLES[role].label}」檢視專屬工作台；此角色沒有資料異動權限。`;
+    ? `以「${ROLES[role].label}」操作流程基礎版；真實商品發現、廠商補充與開發名單仍在後續建置。`
+    : `以「${ROLES[role].label}」檢視角色規格；目前為合成資料，尚未啟用真實市場採集。`;
 }
 
 async function refresh() {
@@ -161,7 +161,8 @@ function renderRoleOverview() {
         <small>${esc(role)}</small>
       </div>
     </section>
-    ${heading("角色專屬摘要", api.connected ? "資料來自本機 SQLite Sandbox。" : "公開 Pages 使用合成資料，所有操作保持唯讀。", `<div class="button-row">${experience.actions.map(roleAction).join("")}</div>`)}
+    <div class="foundation-status"><strong>MVP 重新定義：真實市場發現是第一個驗收閘門</strong><span>目前已完成資料處理與審核流程；自動發現開團商品、補充廠商資料、建立開發名單及商品－KOL 關聯仍在建置計畫中。</span></div>
+    ${heading("角色專屬摘要", api.connected ? "以下為本機流程基礎版與合成種子資料。" : "公開 Pages 使用合成資料，所有操作保持唯讀。", `<div class="button-row">${experience.actions.map(roleAction).join("")}</div>`)}
     <div class="grid stats">${cards.map(([name, value, detail, tone]) => `<article class="stat" style="--accent:var(--${tone});--accent-soft:var(--${tone}-soft,#f1efff)"><span class="stat-label">${esc(name)}</span><div class="stat-value">${esc(value)}</div><span class="stat-delta">${esc(detail)}</span></article>`).join("")}</div>
     <div class="grid two-col role-panels">
       <article class="panel">

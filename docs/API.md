@@ -6,7 +6,9 @@ Base path：`/api/v1`。所有回應為 JSON；mutation 僅供本機 Sandbox。�
 
 | Method | Path | 能力 | 說明 |
 |---|---|---|---|
-| GET | `/health` | — | 模式、SQLite、Sandbox／ERP 寫入邊界 |
+| GET | `/health` | — | 模式、MVP 狀態、真實 Collector 數量、SQLite、Sandbox／ERP 寫入邊界 |
+
+`/health` 目前固定回傳 `mvp_status: "FOUNDATION"`、`real_market_discovery_enabled: false`、`live_collectors: 0`。只有完整 MVP Entry Gate 通過後才能修改。
 | GET | `/dashboard` | view | 儀表板統計 |
 | GET／POST | `/sources` | view／source_admin | 來源列表／建立公開來源 |
 | GET／POST | `/observations` | view／review | 查詢／建立 Observation |

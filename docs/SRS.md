@@ -1,6 +1,6 @@
-# 團購市場情報與開發雷達 SRS v0.2
+# 團購市場情報與開發雷達 SRS v0.3
 
-狀態：MVP Implemented（D-MR-01～10 採建議版）
+狀態：MVP Rebaselined／Foundation Implemented／完整 MVP 尚未完成
 日期：2026-11-04
 
 ## 1. 目的與邊界
@@ -12,6 +12,10 @@
 - 觀察資料不得自動建立或更新 ERP 主檔。
 - 無資料代表「未知／資料不足」，不得呈現為 0。
 - 不推估銷售量、GMV 或私人互動成效。
+
+### 1.1 Owner 重新定義
+
+完整 MVP 的第一步必須實際找到市場上正在開團的商品；接著以商品為中心收集廠商公開資料、列出正在開團的 KOL／團主，並讓公司開團人員把廠商加入與指派到預計開發名單。人工輸入、合成資料或只有後段審核流程，不構成完整 MVP。
 
 ## 2. 使用者與角色
 
@@ -26,7 +30,7 @@
 
 公開展示站移除入口驗證，讓各角色頁面可直接審閱；它只放合成資料，不包含 Token、Session、資料庫或寫入 API。正式環境仍必須保留身份驗證與後端 RBAC。
 
-## 3. D-MR-01～10 決策
+## 3. D-MR-01～20 決策
 
 | ID | 決策 |
 |---|---|
@@ -40,8 +44,25 @@
 | D-MR-08 | 廠商分數權重採 25/20/20/20/10/5；KOL 分數採 30/20/15/15/10/10。 |
 | D-MR-09 | ERP promotion 預設僅 dry-run；需 Owner approval 才可進入未來寫入流程。 |
 | D-MR-10 | `kol-claw` 僅作架構參考或外部 adapter，不直接合併至 ERP 核心。 |
+| D-MR-11 | 真實公開市場發現是 MVP 第一個驗收閘門；人工輸入或合成資料不算完成。 |
+| D-MR-12 | Product 是聚合中心；一個商品可對應多筆 GroupBuyEvent。 |
+| D-MR-13 | GroupBuyEvent 必須連結公開來源、觀察時間、狀態，以及可辨識時的 Vendor 與 KOL。 |
+| D-MR-14 | 同一商品需彙整所有已觀察的開團 KOL／團主。 |
+| D-MR-15 | Vendor enrichment 只使用公開商務資料，欄位皆保留 Evidence。 |
+| D-MR-16 | 開團人員可將 VendorCandidate 加入 DevelopmentProspect 並接受指派。 |
+| D-MR-17 | 系統不自動對外聯絡；所有聯絡由人員明確執行。 |
+| D-MR-18 | 登入後、私人社團、私人 LINE 或規避限制的資料不得採集。 |
+| D-MR-19 | Collector／Parser／Normalization／Match 必須版本化、冪等且可重跑。 |
+| D-MR-20 | Pages 只展示合成資料；真實資料與開發名單位於受控後端。 |
 
 ## 4. 功能需求
+
+### FR-00 真實市場商品發現（MVP Entry Gate）
+
+- 系統須由經核准的公開來源，自動或一鍵執行發現目前／近期正在開團的商品。
+- 每筆結果至少包含 source URL、observed_at、商品顯示名稱、開團狀態與 Evidence。
+- 支援排程、手動重跑、重試、來源停用、冪等鍵與 run health。
+- 至少兩種公開來源類型完成 contract test 與真實資料 UAT。
 
 ### FR-01 公開來源登錄
 
@@ -88,6 +109,25 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 - 所有可能改變狀態的操作都必須 disabled 或回覆 dry-run 提示。
 - 僅可使用合成或已匿名化展示資料。
 
+### FR-08 商品、廠商與 KOL 關聯
+
+- ProductCandidate 聚合不同來源與不同 KOL 的 GroupBuyEvent。
+- 商品詳情須列出所有已發現正在／曾經開團的 KOL、平台、團期與證據。
+- 可從 ProductCandidate 追到 VendorCandidate；無法確認時保持 UNKNOWN。
+
+### FR-09 廠商公開資料補充
+
+- 收集廠商名稱、官網、公開合作頁、公開商務 Email、品類、地區與公開社群網址。
+- 每個欄位保存來源、captured_at、confidence 與 parser version。
+- 不推測統編、營收或非公開聯絡資料；只依同名不得連結 ERP Vendor。
+
+### FR-10 預計開發名單
+
+- OPS_EDITOR 可將 VendorCandidate 加入 DevelopmentProspect。
+- OPS_MANAGER 可指派開團人員、設定優先序、下一步日期與開發階段。
+- 同一 Vendor 只能有一筆有效 Prospect，重複加入須冪等回傳既有項目。
+- 系統保存 Activity 與 Audit，但不得自動發信、私訊或聯絡外部人員。
+
 ## 5. 核心資料模型
 
 | Entity | 必要欄位 |
@@ -100,6 +140,13 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 | Lead | lead_id, lead_type, score, score_version, stage, last_observed_at |
 | ReviewDecision | decision_id, lead_id, actor_role, action, reason, decided_at |
 | PromotionDraft | draft_id, lead_id, target_type, field_mapping, conflicts, status |
+| ProductCandidate | product_id, canonical_name, brand, category, normalized_specs, status |
+| GroupBuyEvent | event_id, product_id, vendor_id, kol_id, source_url, observed_at, starts_at, ends_at, event_status |
+| VendorCandidate | vendor_id, display_name, website_url, public_business_contact, evidence, match_status |
+| KolCandidate | kol_id, display_name, platform, handle, public_collaboration_method, evidence |
+| KolProductRelation | relation_id, kol_id, product_id, event_id, first_seen_at, last_seen_at |
+| DevelopmentProspect | prospect_id, vendor_id, owner_id, priority, stage, next_action_at |
+| DevelopmentActivity | activity_id, prospect_id, actor_id, action_type, note, created_at |
 
 ## 6. 非功能需求
 
@@ -122,10 +169,15 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 | 權限測試通過，workflow 先測試再部署 | Done | `npm run check` gate |
 | 本機可完成匯入至 Dry-run 全流程 | Done | SQLite REST API 與 API integration test |
 | 正式 ERP 與既有 repo 未被寫入 | Done | 無 ERP write endpoint；fixture only |
+| 真實發現至少 30 筆公開開團事件 | Not Started | 完整 MVP Entry Gate |
+| 同商品彙整多位開團 KOL | Not Started | Product／GroupBuyEvent／Relation UAT |
+| 商品可追到有 Evidence 的廠商資料 | Not Started | Vendor enrichment UAT |
+| 可加入、指派與追蹤預計開發名單 | Not Started | Development pipeline UAT |
 
-## 8. 實作範圍與後續階段
+## 8. 實作狀態與下一步
 
-- 已完成：Observation API、SQLite schema、人工 URL、CSV／JSON 匯入、去重候選、評分版本、審核工作流、稽核與 fixture-based promotion dry-run。
-- 下一階段：完成平台條款與 robots 審查後，逐一加入合法公開 collectors、排程、重試與來源健康告警。
+- Foundation 已完成：Observation API、SQLite schema、人工 URL、CSV／JSON 匯入、去重候選、評分、角色工作台、審核、稽核與 fixture-based promotion dry-run。
+- 完整 MVP 尚未完成：真實 Discovery Worker、公開來源 Adapters、Product／GroupBuyEvent 關聯、Vendor enrichment、KOL mapping 與 Development Pipeline。
+- 下一步依 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 的 Milestone 1～8 執行。
 - 正式化：SSO、後端身份映射、受管資料庫、備份、監控、正式 ERP 唯讀 adapter 與 contract test。
 - 不在本 MVP：Owner 核准後的受控 ERP 寫入；必須另案風險審核與核准。

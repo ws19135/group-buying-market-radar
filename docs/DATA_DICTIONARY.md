@@ -24,3 +24,16 @@
 
 只接受公開頁面明示的合作 Email；MVP 不蒐集私人訊息、登入後內容、推估銷量、GMV、私人互動指標或非公開聯絡名單。fixture 與 seed 均為合成資料。
 
+## Rebaseline 後的 Planned Entities
+
+| Entity | 用途 | 核心約束 |
+|---|---|---|
+| `product_candidates` | 跨來源聚合商品 | 名稱相似不得自動合併 |
+| `group_buy_events` | 一次公開開團事件 | 必須有 source URL、observed_at、Evidence |
+| `vendor_candidates` | 商品對應廠商公開資料 | 每個 enrichment 欄位具來源與時間 |
+| `kol_candidates` | 公開 KOL／團主候選 | handle 與平台分離；跨平台需人工 match |
+| `kol_product_relations` | KOL × 商品 × 開團事件 | 一個商品可有多位 KOL |
+| `development_prospects` | 預計開發名單 | 同 Vendor 只能有一筆有效 Prospect |
+| `assignments` | 開團人員指派 | 保存 owner、assigned_by、assigned_at |
+| `development_activities` | 開發進度歷程 | append-only；同步 Audit |
+

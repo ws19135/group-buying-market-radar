@@ -83,6 +83,9 @@ h1 { margin: 0; font-size: 24px; letter-spacing: -.03em; }
 .focus-item strong { font-size: 11px; }
 .focus-item span { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 .role-panels .activity-item i { background: var(--role-accent); box-shadow: 0 0 0 4px var(--role-soft); }
+.foundation-status { display: grid; grid-template-columns: minmax(250px,.8fr) minmax(320px,1.4fr); align-items: center; gap: 18px; margin: -8px 0 24px; padding: 14px 16px; border: 1px solid #f0d7ac; border-radius: 12px; background: #fff9ef; }
+.foundation-status strong { color: #8a5b18; font-size: 11px; }
+.foundation-status span { color: #8d785b; font-size: 10px; line-height: 1.55; }
 
 .section-heading { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; gap: 16px; }
 .section-heading h2 { margin: 0 0 5px; font-size: 18px; }
@@ -198,4 +201,5 @@ tbody tr:hover { background: #fbfbfe; }
   .form-field.full { grid-column: auto; }
   .role-hero { align-items: flex-start; flex-direction: column; padding: 22px; }
   .role-identity { width: 100%; }
+  .foundation-status { grid-template-columns: 1fr; gap: 6px; }
 }

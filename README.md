@@ -1,19 +1,33 @@
-# Group Buying Market Radar — MVP
+# Group Buying Market Radar — MVP Foundation
 
-SDH 團購 ERP 的「團購市場情報與開發雷達」。MVP 將公開市場訊號保存為可追溯的 Observation，經過正規化、去重候選、評分與人工審核後，產生 ERP Promotion Dry-run；它不會直接寫入正式 ERP。
+SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11-04 重新定義 MVP：系統的第一個驗收閘門必須能實際發現市場上正在開團的商品；再由商品串出廠商公開資料、正在開團的 KOL／團主，以及可由開團人員加入與指派的預計開發名單。
 
 > 本 Repository 與 `ws19135/group-buying-operations` 分離。ERP 仍是 Vendor、Product、Host、Campaign 的唯一真實來源（SoT）。
+
+## 目前狀態
+
+`MVP_STATUS=FOUNDATION`：現有版本完成角色工作台、人工／匯入進件、正規化、去重、評分、審核、稽核與 ERP Dry-run，但**尚未啟用真實市場自動採集器，因此不符合重新定義後的完整 MVP 出場條件**。
+
+| 能力 | 狀態 |
+|---|---|
+| 真實發現市場上正在開團的商品 | Not implemented |
+| 以商品彙整所有開團 KOL／團主 | Not implemented |
+| 自動補充廠商公開資料與證據 | Not implemented |
+| 加入、指派及追蹤預計開發名單 | Not implemented |
+| Observation／Evidence／去重／評分 | Implemented |
+| 人工審核、Audit、Promotion Dry-run | Implemented |
+| 六套角色工作台 | Implemented |
 
 ## 兩種執行模式
 
 | 模式 | 用途 | 寫入範圍 |
 |---|---|---|
 | GitHub Pages 公開預覽 | 免登入展示六套角色工作台與合成資料 | 完全唯讀，沒有 API、資料庫或秘密 |
-| 本機 MVP Sandbox | 完整操作流程與 UAT | 只寫入本機 SQLite；ERP 僅讀取 fixture 並執行 Dry-run |
+| 本機流程基礎版 | 已完成流程的操作與 UAT | 只寫入本機 SQLite；ERP 僅讀取 fixture 並執行 Dry-run |
 
 公開預覽：<https://ws19135.github.io/group-buying-market-radar/>
 
-## MVP 功能
+## 已完成的流程基礎
 
 - 人工公開 URL 建立 Observation，以及 CSV／JSON 批次匯入
 - URL、handle、Email、日期與金額正規化；匯入與 Observation 冪等控制
@@ -65,6 +79,8 @@ http://localhost:4173/?role=OPS_EDITOR#observations
 
 ## 文件
 
+- [Owner 需求與 MVP 重新定義](docs/MVP_REBASELINE.md)
+- [完整建置步驟](docs/IMPLEMENTATION_PLAN.md)
 - [SRS 與驗收狀態](docs/SRS.md)
 - [系統架構](docs/SAD.md)
 - [詳細設計](docs/SDD.md)

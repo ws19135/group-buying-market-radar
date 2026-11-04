@@ -1,11 +1,16 @@
-# 詳細設計文件（SDD）v0.2
+# 詳細設計文件（SDD）v0.3
 
 ## 1. 核心流程
 
 ```mermaid
 stateDiagram-v2
-  [*] --> OBSERVED: 建立或匯入 Observation
-  OBSERVED --> DRAFT: 重建 Lead
+  [*] --> DISCOVERED: Collector 發現公開開團事件
+  DISCOVERED --> OBSERVED: 保存 Observation / Evidence
+  OBSERVED --> PRODUCT_MATCH: 商品去重候選
+  PRODUCT_MATCH --> ENRICHED: Vendor 與 KOL 關聯
+  ENRICHED --> PLANNED: 加入預計開發名單
+  PLANNED --> ASSIGNED: 指派開團人員
+  ASSIGNED --> DRAFT: 重建／提交 Lead
   DRAFT --> IN_REVIEW: SUBMIT
   IN_REVIEW --> APPROVED: APPROVE
   IN_REVIEW --> REJECTED: REJECT
@@ -20,6 +25,14 @@ stateDiagram-v2
 - fingerprint 使用 canonical URL、entity type、handle、名稱 key 與開始時間的穩定 JSON SHA-256。
 - 重複 fingerprint 回傳既有資料，不新增第二筆。
 - 每個已知欄位建立 Evidence；原始 payload、hash、parser／normalization version 均保存。
+
+## 2.1 Discovery Worker（Planned）
+
+- Collector 只接受 Source Allowlist，輸出統一的 `RawDiscoveryRecord`。
+- Parser 把 raw record 轉為 Observation 與 GroupBuyEvent，不直接建立 ERP 主檔。
+- run 使用 source＋query＋schedule window 產生 idempotency key；重跑不重複建立事件。
+- fetch 設定 timeout、response size、content type、rate limit、retry 與 kill switch。
+- Evidence 至少包含原始公開 URL、擷取時間與支撐商品／團期／KOL 關聯的欄位。
 
 ## 3. Import
 
@@ -50,7 +63,14 @@ Vendor 權重：25／20／20／20／10／5；KOL 權重：30／20／15／15／10
 
 只有 `APPROVED` lead 可建立 draft。系統以公開 Email 或 website URL 對 fixture 做穩定配對；同名而無穩定 ID 時回傳 `CONFLICT`。可能結果為 `WOULD_CREATE`、`WOULD_LINK_EXISTING`、`CONFLICT` 或 `INCOMPLETE`，永遠不更新主檔。
 
-## 7. 錯誤與稽核
+## 7. Development Pipeline（Planned）
+
+- `DevelopmentProspect` 對 VendorCandidate 維持唯一有效關聯。
+- 階段：PLANNED、ASSIGNED、CONTACTED、RESPONDED、NEGOTIATING、WON、LOST、DO_NOT_CONTACT。
+- OPS_EDITOR 可新增 Prospect；OPS_MANAGER 可指派 Owner、優先序與 next_action_at。
+- 所有狀態變更建立 DevelopmentActivity 與 Audit；系統不自動對外聯絡。
+
+## 8. 錯誤與稽核
 
 API error schema：`{ error: { code, message }, request_id }`。伺服器錯誤不洩漏 stack。稽核保存 actor role、action、entity、before／after、request ID 與 timestamp。
 

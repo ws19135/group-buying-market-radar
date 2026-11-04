@@ -1,5 +1,7 @@
 # Market Radar MVP 同事展示指南
 
+> 目前是流程 Foundation／規格預覽，不是完整 MVP。公開頁的商品、廠商、KOL 與統計皆為合成資料；真實市場發現是下一個 MVP Blocker。
+
 ## 建議展示順序（約 8 分鐘）
 
 1. 開啟公開 Pages，說明這是免登入、合成資料、完全唯讀的展示入口。
@@ -9,7 +11,8 @@
 5. 切換 `SYSTEM_ADMIN`：展示「系統治理中心」、來源政策、Evidence、Audit 與全部系統頁面。
 6. 切換 `FINANCE`：說明只看候選規模與 Dry-run 狀態，不推估 GMV、不可審核。
 7. 切換 `VENDOR`／`HOST`：展示專屬外部視角與未來 Portal 的租戶隔離邊界。
-8. 回到本機 Sandbox，示範 Observation → Lead → Review → Promotion Draft → Dry-run 的完整流程。
+8. 回到本機 Sandbox，示範已完成的 Observation → Lead → Review → Promotion Draft → Dry-run 流程。
+9. 最後打開 `MVP_REBASELINE.md`，說明下一階段會完成真實商品發現 → 廠商補充 → KOL 關聯 → 預計開發名單。
 
 ## 六種角色畫面
 

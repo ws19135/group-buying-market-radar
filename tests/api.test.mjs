@@ -33,6 +33,9 @@ test("health describes an isolated MVP sandbox with ERP writes disabled", async 
   const result = await api(base, "/api/v1/health");
   assert.equal(result.status, 200);
   assert.equal(result.payload.mode, "MVP_SANDBOX");
+  assert.equal(result.payload.mvp_status, "FOUNDATION");
+  assert.equal(result.payload.real_market_discovery_enabled, false);
+  assert.equal(result.payload.live_collectors, 0);
   assert.equal(result.payload.erp_write_enabled, false);
   assert.equal(result.payload.production_touched, false);
 }));
