@@ -19,7 +19,7 @@
     <nav id="navigation" aria-label="主要導覽"></nav>
     <div class="sidebar-foot">
       <span class="live-dot"></span>
-      <div><strong>公開展示模式</strong><small>資料皆為合成示範資料</small></div>
+      <div><strong id="sidebar-mode">公開展示模式</strong><small id="sidebar-mode-detail">資料皆為合成示範資料</small></div>
     </div>
   </aside>
 
@@ -34,7 +34,7 @@
           <label for="role-select">角色預覽</label>
           <select id="role-select"></select>
         </div>
-        <a class="icon-button" href="https://github.com/ws19135" target="_blank" rel="noreferrer" aria-label="GitHub">GH</a>
+        <a class="icon-button" href="https://github.com/ws19135/group-buying-market-radar" target="_blank" rel="noreferrer" aria-label="GitHub Repository">GH</a>
       </div>
     </header>
 
@@ -47,6 +47,16 @@
   </main>
 
   <div id="toast" class="toast" role="status"></div>
+  <dialog id="modal" class="modal">
+    <form id="modal-form" method="dialog">
+      <div class="modal-head">
+        <div><p class="eyebrow">MARKET RADAR MVP</p><h2 id="modal-title">新增資料</h2><p id="modal-description"></p></div>
+        <button id="modal-close" class="icon-button" type="button" aria-label="關閉">×</button>
+      </div>
+      <div id="modal-fields" class="form-grid"></div>
+      <div class="modal-actions"><button id="modal-cancel" class="btn btn-secondary" type="button">取消</button><button id="modal-submit" class="btn btn-primary" type="submit">儲存</button></div>
+    </form>
+  </dialog>
   <script type="module" src="app.js"></script>
 </body>
 </html>

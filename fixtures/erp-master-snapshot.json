@@ -1,0 +1,19 @@
+{
+  "snapshot_version": "demo-2026-11-04",
+  "vendors": [
+    {
+      "id": "VEN-DEMO-001",
+      "display_name": "晨光食品（示範）",
+      "website_url": "https://existing.example.org/",
+      "public_email": "existing-vendor@example.org"
+    }
+  ],
+  "hosts": [
+    {
+      "id": "HOST-DEMO-001",
+      "display_name": "好物研究室",
+      "website_url": "https://creator.example.com/good-life-lab",
+      "public_email": "partner@example.com"
+    }
+  ]
+}

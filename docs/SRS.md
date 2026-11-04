@@ -1,7 +1,7 @@
-# 團購市場情報與開發雷達 SRS v0.1
+# 團購市場情報與開發雷達 SRS v0.2
 
-狀態：Approved for MVP（D-MR-01～10 採建議版）  
-日期：2026-11-03
+狀態：MVP Implemented（D-MR-01～10 採建議版）
+日期：2026-11-04
 
 ## 1. 目的與邊界
 
@@ -108,19 +108,22 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 - 效能：10,000 筆觀察下，列表首屏目標在 2 秒內完成（正式 API 環境）。
 - 稽核：正式審核與 promotion 事件不可被一般使用者刪除。
 
-## 7. MVP 驗收條件
+## 7. MVP 驗收條件與狀態
 
-1. 公開 URL 可免登入開啟。
-2. 六種角色均可切換，所有頁面都可顯示。
-3. 所有動作在公開站都不造成寫入。
-4. Observation、Vendor Lead、KOL Lead、Review、Source、ERP Dry-run 頁面齊全。
-5. README 顯示資料流程圖。
-6. 權限測試通過，且 GitHub Pages workflow 先測試再部署。
+| 驗收條件 | 狀態 | 證據 |
+|---|---|---|
+| 公開 URL 可免登入開啟 | Done | GitHub Pages |
+| 六種角色均可切換，所有頁面都可顯示 | Done | 共用前端與 permission tests |
+| 所有動作在公開站都不造成寫入 | Done | Pages 無 API；UI 自動進入 READ-ONLY |
+| Observation、Lead、Review、Source、ERP Dry-run 頁面齊全 | Done | 八頁 UI |
+| README 顯示資料流程圖 | Done | `docs/assets/market-radar-flow.png` |
+| 權限測試通過，workflow 先測試再部署 | Done | `npm run check` gate |
+| 本機可完成匯入至 Dry-run 全流程 | Done | SQLite REST API 與 API integration test |
+| 正式 ERP 與既有 repo 未被寫入 | Done | 無 ERP write endpoint；fixture only |
 
-## 8. 後續階段
+## 8. 實作範圍與後續階段
 
-- Phase 1：Observation API、資料庫 schema、人工 URL 與 CSV 匯入。
-- Phase 2：合法公開來源 collectors、排程與來源健康度。
-- Phase 3：去重候選、評分版本、審核工作流。
-- Phase 4：與 ERP 的唯讀查詢及 promotion dry-run contract test。
-- Phase 5：Owner 核准後的受控寫入（另案審核）。
+- 已完成：Observation API、SQLite schema、人工 URL、CSV／JSON 匯入、去重候選、評分版本、審核工作流、稽核與 fixture-based promotion dry-run。
+- 下一階段：完成平台條款與 robots 審查後，逐一加入合法公開 collectors、排程、重試與來源健康告警。
+- 正式化：SSO、後端身份映射、受管資料庫、備份、監控、正式 ERP 唯讀 adapter 與 contract test。
+- 不在本 MVP：Owner 核准後的受控 ERP 寫入；必須另案風險審核與核准。
