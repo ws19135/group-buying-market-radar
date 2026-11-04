@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="團購市場情報與開發雷達公開唯讀展示站">
+  <title>Market Radar｜團購市場雷達</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="團購市場雷達首頁">
+      <span class="brand-mark">MR</span>
+      <span><strong>Market Radar</strong><small>團購市場開發雷達</small></span>
+    </a>
+    <nav id="navigation" aria-label="主要導覽"></nav>
+    <div class="sidebar-foot">
+      <span class="live-dot"></span>
+      <div><strong>公開展示模式</strong><small>資料皆為合成示範資料</small></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">GROUP BUYING INTELLIGENCE</p>
+        <h1 id="page-title">市場總覽</h1>
+      </div>
+      <div class="top-actions">
+        <div class="role-control">
+          <label for="role-select">角色預覽</label>
+          <select id="role-select"></select>
+        </div>
+        <a class="icon-button" href="https://github.com/ws19135" target="_blank" rel="noreferrer" aria-label="GitHub">GH</a>
+      </div>
+    </header>
+
+    <section class="preview-banner">
+      <div><strong>免登入唯讀預覽</strong><span id="role-summary"></span></div>
+      <span class="preview-badge">NO WRITE</span>
+    </section>
+
+    <section id="app" class="content" aria-live="polite"></section>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
