@@ -1,6 +1,6 @@
-# MVP UAT 計畫 v0.3
+# MVP UAT 計畫 v0.4
 
-狀態：Foundation UAT 通過；完整 MVP UAT 尚未開始
+狀態：Foundation 與 M1 Collector contract UAT 通過；真實來源 MVP UAT 尚未開始
 
 ## 前置條件
 
@@ -18,6 +18,8 @@
 | UAT-00C | EDITOR | 將廠商加入預計開發名單 | 建立唯一 Prospect；重複加入回傳既有項目 |
 | UAT-00D | MANAGER | 指派開團人員、優先序、下一步日期 | Pipeline 與 Audit 正確更新 |
 | UAT-01 | ADMIN | 新增公開 Source | 成功；私有 IP／localhost 被拒絕 |
+| UAT-01A | ADMIN | 建立需要登入或條款未審查的自動來源 | 系統拒絕啟用 Collector |
+| UAT-01B | ADMIN | 執行 robots 禁止、DNS 指向私網或跨網域 redirect 的來源 | 失敗 Run、Source health 與 Audit 均有紀錄 |
 | UAT-02 | EDITOR | 建立 Observation | Evidence 可查看；重送不重複新增 |
 | UAT-03 | EDITOR | CSV／JSON 匯入後以相同 key 重送 | 第二次回傳 replay；run 計數不重複 |
 | UAT-04 | EDITOR | 重建 Leads | Vendor／KOL 分數與資料充分度顯示 |

@@ -30,7 +30,7 @@ export const kolLeads = [
 export const sources = [
   { name: "人工提交公開 URL", kind: "Manual", last: "3 分鐘前", success: "100%", status: "正常" },
   { name: "CSV / JSON 匯入", kind: "Import", last: "18 分鐘前", success: "99.2%", status: "正常" },
-  { name: "公開團購日曆", kind: "Collector", last: "31 分鐘前", success: "97.8%", status: "正常" },
-  { name: "品牌官網", kind: "Collector", last: "46 分鐘前", success: "96.1%", status: "正常" },
-  { name: "公開合作表單", kind: "Collector", last: "1 小時前", success: "94.5%", status: "注意" }
+  { name: "公開團購日曆（合成示範）", kind: "Collector Demo", last: "31 分鐘前", success: "97.8%", status: "正常" },
+  { name: "品牌官網（合成示範）", kind: "Collector Demo", last: "46 分鐘前", success: "96.1%", status: "正常" },
+  { name: "公開合作表單（合成示範）", kind: "Collector Demo", last: "1 小時前", success: "94.5%", status: "注意" }
 ];

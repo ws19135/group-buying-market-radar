@@ -1,6 +1,6 @@
-# 團購市場情報與開發雷達 SRS v0.3
+# 團購市場情報與開發雷達 SRS v0.4
 
-狀態：MVP Rebaselined／Foundation Implemented／完整 MVP 尚未完成
+狀態：MVP Rebaselined／Discovery Foundation Implemented／完整 MVP 尚未完成
 日期：2026-11-04
 
 ## 1. 目的與邊界
@@ -169,6 +169,7 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 | 權限測試通過，workflow 先測試再部署 | Done | `npm run check` gate |
 | 本機可完成匯入至 Dry-run 全流程 | Done | SQLite REST API 與 API integration test |
 | 正式 ERP 與既有 repo 未被寫入 | Done | 無 ERP write endpoint；fixture only |
+| 公開來源治理與安全 Collector runtime | Done | policy／terms／robots／DNS／SSRF／Run contract tests |
 | 真實發現至少 30 筆公開開團事件 | Not Started | 完整 MVP Entry Gate |
 | 同商品彙整多位開團 KOL | Not Started | Product／GroupBuyEvent／Relation UAT |
 | 商品可追到有 Evidence 的廠商資料 | Not Started | Vendor enrichment UAT |
@@ -176,8 +177,8 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 
 ## 8. 實作狀態與下一步
 
-- Foundation 已完成：Observation API、SQLite schema、人工 URL、CSV／JSON 匯入、去重候選、評分、角色工作台、審核、稽核與 fixture-based promotion dry-run。
-- 完整 MVP 尚未完成：真實 Discovery Worker、公開來源 Adapters、Product／GroupBuyEvent 關聯、Vendor enrichment、KOL mapping 與 Development Pipeline。
-- 下一步依 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 的 Milestone 1～8 執行。
+- Discovery Foundation 已完成：原 Foundation 能力，加上公開來源治理、robots／DNS／SSRF／redirect／timeout／rate limit／1 MB 防護、Schema.org Product／Event 解析、Run metadata 與冪等重播。
+- 完整 MVP 尚未完成：首批真實來源 UAT、第二種 Adapter、Product／GroupBuyEvent 關聯、Vendor enrichment、KOL mapping 與 Development Pipeline。
+- 下一步依 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 的 Milestone 2～8 執行。
 - 正式化：SSO、後端身份映射、受管資料庫、備份、監控、正式 ERP 唯讀 adapter 與 contract test。
 - 不在本 MVP：Owner 核准後的受控 ERP 寫入；必須另案風險審核與核准。

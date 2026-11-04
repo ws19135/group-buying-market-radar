@@ -1,4 +1,4 @@
-# 詳細設計文件（SDD）v0.3
+# 詳細設計文件（SDD）v0.4
 
 ## 1. 核心流程
 
@@ -26,13 +26,15 @@ stateDiagram-v2
 - 重複 fingerprint 回傳既有資料，不新增第二筆。
 - 每個已知欄位建立 Evidence；原始 payload、hash、parser／normalization version 均保存。
 
-## 2.1 Discovery Worker（Planned）
+## 2.1 Public Discovery Collector（Implemented in M1）
 
-- Collector 只接受 Source Allowlist，輸出統一的 `RawDiscoveryRecord`。
-- Parser 把 raw record 轉為 Observation 與 GroupBuyEvent，不直接建立 ERP 主檔。
-- run 使用 source＋query＋schedule window 產生 idempotency key；重跑不重複建立事件。
-- fetch 設定 timeout、response size、content type、rate limit、retry 與 kill switch。
-- Evidence 至少包含原始公開 URL、擷取時間與支撐商品／團期／KOL 關聯的欄位。
+- Collector 只接受 `APPROVED + REVIEWED_PUBLIC + PUBLIC_NO_LOGIN + scrape_allowed` Source。
+- fetch 前後執行 URL、DNS 公網位址、robots、同 hostname redirect、timeout、1 MB、content type、rate limit 與 retry 防護。
+- Parser 優先讀取 Schema.org `Product`／`Event`；Open Graph fallback 一律標記 `REVIEW_REQUIRED`。
+- run 預設以 source＋content hash＋parser version 產生 idempotency key；也可接受明確 key 並安全 replay。
+- Run metadata 保存 target URL、query、parser version、content hash、fetched_at 與新增／重複／錯誤計數。
+- 每筆 Observation 保存公開 URL、擷取時間、raw payload、hash、confidence 與支撐商品／團期／KOL 的 Evidence。
+- 尚未完成：排程、第二種 Adapter、GroupBuyEvent 狀態歷程與首批真實來源 UAT。
 
 ## 3. Import
 

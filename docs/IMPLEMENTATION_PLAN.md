@@ -14,7 +14,7 @@
 
 ## Milestone 1 — 公開來源治理與 Collector 契約
 
-狀態：Next
+狀態：Done（2026-11-04）
 
 1. 建立首批 Source Allowlist，逐一記錄來源類型、公開性、robots／條款檢查結果、擷取頻率與 Owner。
 2. 首批建議來源類型：公開品牌活動頁／公開團購頁、公開團購日曆或列表、開放網頁搜尋結果；不碰登入後內容。
@@ -22,15 +22,15 @@
 4. 每次 run 保存 source、query、started_at、completed_at、parser_version、成功／重複／錯誤計數。
 5. 加入 rate limit、timeout、retry、User-Agent、1 MB response limit 與 allowlist／SSRF 防護。
 
-交付物：`SOURCE_ALLOWLIST.md`、Collector contract、fixture contract tests、政策審查紀錄。
+交付物：`SOURCE_ALLOWLIST.md`、`COLLECTOR_CONTRACT.md`、公開頁 Collector、fixture contract tests、來源治理 UI／API、Run metadata 與 Audit。
 
-Owner Gate A：確認首批要納入的來源類型與可使用的搜尋／資料 API。
+Owner Gate A：已通過。Owner 核准公開品牌／團購頁、公開清單／日曆與公開搜尋結果；明確排除 LINE 群、私人社團、登入後與封閉資料。
 
 ## Milestone 2 — 真實開團商品發現
 
-狀態：Planned
+狀態：In Progress
 
-1. 實作至少兩種來源 Adapter。
+1. 實作至少兩種來源 Adapter。`Public Page` 與 `Public Listing` contract 已完成；真實來源 UAT 待執行。
 2. 擷取商品名稱、品牌、公開價格、團期、開團狀態、來源 URL、平台與觀察時間。
 3. 建立 `GroupBuyEvent`；同頁重新觀察時新增狀態歷程，不覆寫舊 Evidence。
 4. 支援人工執行與排程執行；相同 run key 可安全重播。

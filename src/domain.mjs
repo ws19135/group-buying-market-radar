@@ -26,6 +26,18 @@ const PRIVATE_IPV4 = [
   /^(22[4-9]|23\d|24\d|25[0-5])\./,
 ];
 
+export function isPublicAddress(value) {
+  const address = String(value || "").toLowerCase().replace(/^\[|\]$/g, "");
+  const ipVersion = isIP(address);
+  if (!ipVersion) return false;
+  if (ipVersion === 4) return !PRIVATE_IPV4.some(pattern => pattern.test(address));
+  if (address === "::1" || address === "::" || address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe80:")) return false;
+  if (address.startsWith("::ffff:")) return isPublicAddress(address.slice(7));
+  if (address.startsWith("2001:db8:") || address.startsWith("ff")) return false;
+  const first = Number.parseInt(address.split(":", 1)[0], 16);
+  return first >= 0x2000 && first <= 0x3fff;
+}
+
 export function nowIso(clock = () => new Date()) {
   return clock().toISOString();
 }
@@ -102,11 +114,8 @@ export function validatePublicUrl(value) {
     return { ok: false, code: "PRIVATE_HOST_BLOCKED", reason: "不得使用本機或內網網址" };
   }
   const ipVersion = isIP(hostname);
-  if (ipVersion === 4 && PRIVATE_IPV4.some(pattern => pattern.test(hostname))) {
-    return { ok: false, code: "PRIVATE_IP_BLOCKED", reason: "不得使用私有或保留 IPv4" };
-  }
-  if (ipVersion === 6 && (hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd") || hostname.startsWith("fe80:"))) {
-    return { ok: false, code: "PRIVATE_IP_BLOCKED", reason: "不得使用私有或保留 IPv6" };
+  if (ipVersion && !isPublicAddress(hostname)) {
+    return { ok: false, code: "PRIVATE_IP_BLOCKED", reason: "不得使用私有或保留 IP" };
   }
   if (hostname === "169.254.169.254" || hostname === "metadata.google.internal") {
     return { ok: false, code: "METADATA_IP_BLOCKED", reason: "不得存取雲端 metadata" };

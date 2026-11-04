@@ -4,7 +4,7 @@ import { RadarApi, newClientRequestId } from "./api-client.js";
 import { PAGE_CATALOG, canAccessRolePage, getRoleExperience } from "./role-experience.js";
 
 const titles = Object.fromEntries(Object.entries(PAGE_CATALOG).map(([id, item]) => [id, item.label]));
-const labels = { OBSERVED: "已觀察", DISCOVERED: "待審核", SUBMITTED: "已送審", APPROVED: "已核准", REJECTED: "已拒絕", NEEDS_MORE_DATA: "待補資料", IGNORED: "不處理", DRY_RUN_READY: "待 Dry-run", DRY_RUN_COMPLETED: "Dry-run 完成", HEALTHY: "正常", UNKNOWN: "未知", PENDING: "待確認", COMPLETED: "完成", PARTIAL: "部分完成", FAILED: "失敗" };
+const labels = { OBSERVED: "已觀察", ACTIVE_OR_RECENT: "進行中／近期", UPCOMING: "即將開始", ENDED: "已結束", REVIEW_REQUIRED: "需人工確認", DISCOVERED: "待審核", SUBMITTED: "已送審", APPROVED: "已核准", REJECTED: "已拒絕", NEEDS_MORE_DATA: "待補資料", IGNORED: "不處理", DRY_RUN_READY: "待 Dry-run", DRY_RUN_COMPLETED: "Dry-run 完成", HEALTHY: "正常", ERROR: "異常", UNKNOWN: "未知", PENDING: "待確認", REVIEWED_PUBLIC: "公開來源已審查", ALLOWED: "允許", NOT_PRESENT: "未提供", BLOCKED: "禁止", COMPLETED: "完成", PARTIAL: "部分完成", FAILED: "失敗" };
 
 let role = getRole(location.search);
 let page = location.hash.slice(1) || "overview";
@@ -59,14 +59,14 @@ function updateMode() {
   const mode = document.querySelector("#sidebar-mode");
   const detail = document.querySelector("#sidebar-mode-detail");
   if (api.connected) {
-    mode.textContent = "MVP 流程基礎版";
-    detail.textContent = "真實市場採集器尚未啟用";
+    mode.textContent = "MVP 採集底座版";
+    detail.textContent = api.health?.live_collectors ? `${api.health.live_collectors} 個公開來源已啟用` : "採集器已就緒 · 等待核准來源";
     document.querySelector(".preview-banner").classList.add("sandbox");
-    document.querySelector(".preview-banner strong").textContent = "流程基礎版 Sandbox";
+    document.querySelector(".preview-banner strong").textContent = "公開採集 Sandbox";
     document.querySelector(".preview-badge").textContent = "LOCAL WRITE";
   } else {
     mode.textContent = "MVP 規格展示";
-    detail.textContent = "合成資料 · 真實採集待建";
+    detail.textContent = "合成資料 · 公開採集器需在本機執行";
   }
 }
 
@@ -80,11 +80,11 @@ function updateRolePresentation(experience) {
   document.body.dataset.accent = experience.accent;
   document.querySelector(".topbar .eyebrow").textContent = experience.eyebrow;
   const banner = document.querySelector(".preview-banner");
-  banner.querySelector("strong").textContent = api.connected ? `${experience.homeTitle} · 流程基礎版` : `${experience.homeTitle} · 規格預覽`;
+  banner.querySelector("strong").textContent = api.connected ? `${experience.homeTitle} · 採集底座版` : `${experience.homeTitle} · 規格預覽`;
   banner.querySelector(".preview-badge").textContent = api.connected ? experience.badge : "NO WRITE";
   roleSummary.textContent = api.connected && can(role, "review")
-    ? `以「${ROLES[role].label}」操作流程基礎版；真實商品發現、廠商補充與開發名單仍在後續建置。`
-    : `以「${ROLES[role].label}」檢視角色規格；目前為合成資料，尚未啟用真實市場採集。`;
+    ? `以「${ROLES[role].label}」操作公開採集 Sandbox；核准來源後可建立真實 Observation，商品彙整與開發名單仍在後續建置。`
+    : `以「${ROLES[role].label}」檢視角色規格；Pages 僅顯示合成資料，不執行網路採集。`;
 }
 
 async function refresh() {
@@ -126,7 +126,7 @@ const views = {
   vendors: () => renderLeads("VENDOR", state.vendorLeads, "廠商開發線索", "評分權重 25／20／20／20／10／5；缺值保留 UNKNOWN。"),
   kols: () => renderLeads("KOL", state.kolLeads, "KOL 合作線索", "評分權重 30／20／15／15／10／10；不推估銷售或 GMV。"),
   review: () => { const leads = [...state.vendorLeads, ...state.kolLeads].filter(item => ["DISCOVERED", "SUBMITTED", "NEEDS_MORE_DATA", "待審核", "待補資料"].includes(item.stage)); return `${heading("人工審核佇列", "所有決策保存 Actor、Reason 與 Before／After。", button("rebuild-leads", "review", "重建線索"))}<div class="notice">同名只產生 Match Candidate，不會自動合併。OPS_EDITOR 可送審；主管與管理員才可核准。</div>${table(["線索", "類型", "分數／充分度", "狀態", "最後觀察", "審核"], leads.map(item => `<tr><td><span class="strong">${esc(item.canonical_name)}</span><span class="subtle">${esc(item.lead_id)}</span></td><td>${esc(item.lead_type)}</td><td>${score(item.score, item.data_sufficiency)}</td><td>${badge(item.stage)}</td><td>${date(item.last_observed_at)}</td><td>${button("open-review", role === "OPS_EDITOR" ? "review" : "approve", "審核", { primary: false, id: item.lead_id })}</td></tr>`), "目前沒有待審線索")}`; },
-  sources: () => `${heading("資料來源健康度", "MVP 支援人工 URL 與 CSV／JSON；自動 Collector 預設停用。", button("open-source", "source_admin", "新增來源"))}${table(["來源", "型態", "政策", "最近成功", "狀態"], state.sources.map(item => `<tr><td><span class="strong">${esc(item.name)}</span><span class="subtle">${esc(item.base_url || "公開展示來源")}</span></td><td>${esc(item.type)}</td><td>${badge(item.policy_status)}</td><td>${date(item.last_success_at)}</td><td>${badge(item.health_status)}</td></tr>`))}${state.runs.length ? `<h3 class="subsection-title">最近匯入 Run</h3>${table(["Run", "狀態", "新增", "重複", "錯誤"], state.runs.slice(0, 10).map(item => `<tr><td class="id">${esc(item.run_id)}</td><td>${badge(item.status)}</td><td>${item.created_count}</td><td>${item.duplicate_count}</td><td>${item.error_count}</td></tr>`))}` : ""}`,
+  sources: () => `${heading("公開資料來源治理", "只有政策與條款完成審查、明確不需登入且允許採集的來源才能執行 Collector。", button("open-source", "source_admin", "新增公開來源"))}<div class="notice">不採集 LINE 群、私人社團、登入後頁面或封閉資料。每次執行都檢查 robots.txt、DNS／SSRF 邊界、1 MB 上限與來源頻率。</div>${table(["來源", "型態", "政策／條款", "Robots", "最近成功", "狀態", "採集"], state.sources.map(item => `<tr><td><span class="strong">${esc(item.name)}</span><span class="subtle">${esc(item.base_url || "公開展示來源")}</span></td><td>${esc(item.type)}</td><td>${badge(item.policy_status)} <span class="subtle">${esc(textLabel(item.terms_status))}</span></td><td>${badge(item.robots_status)}</td><td>${date(item.last_success_at)}</td><td>${badge(item.health_status)}</td><td>${item.scrape_allowed && ["PUBLIC_GROUP_BUY_PAGE","PUBLIC_BRAND_CAMPAIGN","PUBLIC_LISTING"].includes(item.type) ? button("collect-source", "source_admin", "執行採集", { primary: false, id: item.source_id }) : "未啟用"}</td></tr>`))}${state.runs.length ? `<h3 class="subsection-title">最近採集／匯入 Run</h3>${table(["Run", "目標", "Parser", "狀態", "新增", "重複", "錯誤"], state.runs.slice(0, 10).map(item => `<tr><td class="id">${esc(item.run_id)}</td><td><span class="subtle">${esc(item.target_url || "人工匯入")}</span></td><td>${esc(item.run_parser_version || "manual")}</td><td>${badge(item.status)}</td><td>${item.created_count}</td><td>${item.duplicate_count}</td><td>${item.error_count}</td></tr>`))}` : ""}`,
   integration: () => `${heading("ERP 整合 Dry-run", "使用穩定 ID、冪等鍵、證據鏈與合約版本；正式寫入不存在。")}<div class="notice">group-buying-operations 仍是 SoT。本模組只比較 Demo ERP Snapshot，不持有 ERP Token。</div><div class="integration-flow">${[["1. Approved Lead", "只有已核准線索可建立草稿。"], ["2. Promotion Draft", "固定 contract 與 idempotency key。"], ["3. Dry-run", "輸出 would_create、conflicts 與缺值。"], ["4. Stop", "MVP 到此停止，不提供正式寫入。"]].map(([a, b]) => `<div class="flow-card"><strong>${a}</strong><span>${b}</span></div>`).join("")}</div><h3 class="subsection-title">已核准線索</h3>${table(["線索", "類型", "分數", "動作"], [...state.vendorLeads, ...state.kolLeads].filter(item => item.stage === "APPROVED").map(item => `<tr><td>${esc(item.canonical_name)}</td><td>${item.lead_type}</td><td>${score(item.score, item.data_sufficiency)}</td><td>${button("create-promotion", "integration_dry_run", "建立 Draft", { primary: false, id: item.lead_id })}</td></tr>`), "尚無已核准線索")}<h3 class="subsection-title">Promotion Drafts</h3>${table(["Draft", "目標", "狀態", "結果", "動作"], state.promotions.map(item => `<tr><td class="id">${esc(item.promotion_draft_id)}</td><td>${esc(item.target_type)}</td><td>${badge(item.status)}</td><td>${badge(item.dry_run_result?.result || "尚未執行")}</td><td>${item.status === "DRY_RUN_COMPLETED" ? "已完成" : button("dry-run", "integration_dry_run", "執行 Dry-run", { primary: false, id: item.promotion_draft_id })}</td></tr>`), "尚無 Promotion Draft")}`,
   permissions: () => `${heading("角色權限與執行模式", api.connected ? "Sandbox 依角色開啟功能；外部角色仍只有檢視權。" : "公開站可預覽全部角色，但 Mutation 一律關閉。")}<div class="grid permission-grid">${Object.entries(ROLES).map(([key, value]) => `<article class="panel permission-card ${key === role ? "active" : ""}"><h3>${value.label}</h3><p>${key} · ${value.short}</p><div class="chips">${["view", "review", "approve", "source_admin", "integration_dry_run"].map(capability => `<span class="badge ${can(key, capability) ? "green" : ""}">${can(key, capability) ? "✓" : "—"} ${capability}</span>`).join("")}</div></article>`).join("")}</div><div class="notice" style="margin-top:16px">角色選單只供 Sandbox 驗證，不是正式登入。Production 仍須獨立身份驗證與短效憑證。</div>`,
 };
@@ -161,7 +161,7 @@ function renderRoleOverview() {
         <small>${esc(role)}</small>
       </div>
     </section>
-    <div class="foundation-status"><strong>MVP 重新定義：真實市場發現是第一個驗收閘門</strong><span>目前已完成資料處理與審核流程；自動發現開團商品、補充廠商資料、建立開發名單及商品－KOL 關聯仍在建置計畫中。</span></div>
+    <div class="foundation-status"><strong>M1 已完成：公開來源治理與安全採集底座</strong><span>本機版可對核准且不需登入的公開頁執行採集並保存 Evidence；M2 將接續加入首批實際來源與至少 30 筆真實開團事件。</span></div>
     ${heading("角色專屬摘要", api.connected ? "以下為本機流程基礎版與合成種子資料。" : "公開 Pages 使用合成資料，所有操作保持唯讀。", `<div class="button-row">${experience.actions.map(roleAction).join("")}</div>`)}
     <div class="grid stats">${cards.map(([name, value, detail, tone]) => `<article class="stat" style="--accent:var(--${tone});--accent-soft:var(--${tone}-soft,#f1efff)"><span class="stat-label">${esc(name)}</span><div class="stat-value">${esc(value)}</div><span class="stat-delta">${esc(detail)}</span></article>`).join("")}</div>
     <div class="grid two-col role-panels">
@@ -189,6 +189,7 @@ async function handleCommand(event) {
     if (target.dataset.command === "open-observation") return openObservation();
     if (target.dataset.command === "open-import") return openImport();
     if (target.dataset.command === "open-source") return openSource();
+    if (target.dataset.command === "collect-source") { const result = await api.collectSource(target.dataset.id); await refresh(); render(); return showToast(`採集完成：新增 ${result.run.created_count}、重複 ${result.run.duplicate_count}`); }
     if (target.dataset.command === "open-review") return openReview(target.dataset.id);
     if (target.dataset.command === "rebuild-leads") { await api.rebuildLeads(); await refresh(); render(); return showToast("線索與評分已重新計算"); }
     if (target.dataset.command === "create-promotion") { await api.createPromotion(target.dataset.id); await refresh(); render(); return showToast("Promotion Draft 已建立"); }
@@ -204,7 +205,7 @@ function openModal({ kind, title, description, submit, fields, payload = {} }) {
 }
 function openObservation() { openModal({ kind: "observation", title: "建立公開市場觀察", description: "只登錄公開 URL 與人工確認欄位，不會存取受限內容。", submit: "建立 Observation", fields: [{ name: "source_url", label: "公開來源 URL", type: "url", required: true, full: true }, { name: "entity_type", label: "類型", type: "select", options: [["PRODUCT", "商品"], ["VENDOR", "廠商"], ["KOL", "KOL／團主"], ["CAMPAIGN", "團期"]] }, { name: "title", label: "顯示名稱", required: true }, { name: "category", label: "品類" }, { name: "product_name", label: "商品名稱" }, { name: "vendor_name", label: "廠商名稱" }, { name: "host_name", label: "KOL／團主" }, { name: "platform", label: "平台" }, { name: "platform_handle", label: "公開 Handle" }, { name: "public_email", label: "公開商務 Email", type: "email" }, { name: "starts_at", label: "開始時間", type: "datetime-local" }, { name: "ends_at", label: "結束時間", type: "datetime-local" }, { name: "price_amount", label: "公開價格", type: "number" }, { name: "notes", label: "備註", type: "textarea", rows: 3 }] }); }
 function openImport() { openModal({ kind: "import", title: "匯入 CSV／JSON", description: "支援 source_url、entity_type、title、vendor_name、host_name、product_name、category 等欄位。", submit: "開始匯入", fields: [{ name: "format", label: "格式", type: "select", options: [["csv", "CSV"], ["json", "JSON"]] }, { name: "payload", label: "資料內容", type: "textarea", required: true, rows: 12, placeholder: "source_url,entity_type,title\nhttps://example.com,PRODUCT,示範商品" }] }); }
-function openSource() { openModal({ kind: "source", title: "新增公開資料來源", description: "自動採集預設關閉；仍須完成條款與政策確認。", submit: "新增來源", fields: [{ name: "name", label: "來源名稱", required: true }, { name: "type", label: "類型", type: "select", options: [["MANUAL_URL", "人工 URL"], ["CSV_JSON", "CSV／JSON"], ["PUBLIC_CALENDAR", "公開團購日曆"], ["BRAND_SITE", "品牌官網"]] }, { name: "base_url", label: "Base URL", type: "url", required: true, full: true }, { name: "policy_status", label: "政策", type: "select", options: [["PENDING", "待確認"], ["APPROVED", "已確認公開可用"], ["BLOCKED", "禁止採集"]] }] }); }
+function openSource() { openModal({ kind: "source", title: "新增公開資料來源", description: "僅限不需登入的公開頁。要啟用採集，政策需核准、條款狀態需為已審查公開，並留下審查說明。", submit: "新增來源", fields: [{ name: "name", label: "來源名稱", required: true }, { name: "type", label: "類型", type: "select", options: [["PUBLIC_GROUP_BUY_PAGE", "公開團購頁"], ["PUBLIC_BRAND_CAMPAIGN", "公開品牌活動頁"], ["PUBLIC_LISTING", "公開團購清單／日曆"], ["WEB_SEARCH_RESULT", "公開搜尋結果（匯入）"], ["MANUAL_URL", "人工 URL"]] }, { name: "base_url", label: "公開頁 URL", type: "url", required: true, full: true }, { name: "policy_status", label: "來源政策", type: "select", options: [["PENDING", "待確認"], ["APPROVED", "已核准"], ["BLOCKED", "禁止採集"]] }, { name: "terms_status", label: "條款審查", type: "select", options: [["PENDING", "待確認"], ["REVIEWED_PUBLIC", "已確認為公開可用"], ["BLOCKED", "禁止使用"]] }, { name: "scrape_allowed", label: "自動採集", type: "select", options: [["false", "先不啟用"], ["true", "啟用公開頁採集"]] }, { name: "collection_interval_minutes", label: "最短採集間隔（分鐘）", type: "number", placeholder: "1440" }, { name: "owner_name", label: "來源負責人" }, { name: "review_notes", label: "政策／條款審查紀錄", type: "textarea", rows: 4, full: true }] }); }
 function openReview(id) { const lead = [...state.vendorLeads, ...state.kolLeads].find(item => item.lead_id === id); const options = role === "OPS_EDITOR" ? [["SUBMIT", "送交主管"]] : [["APPROVE", "核准"], ["NEEDS_MORE_DATA", "要求補資料"], ["REJECT", "拒絕"], ["IGNORE", "不處理"]]; openModal({ kind: "review", title: `審核：${lead?.canonical_name || id}`, description: "決策會寫入 ReviewDecision 與 Audit Log。", submit: "送出決策", payload: { leadId: id }, fields: [{ name: "action", label: "決策", type: "select", options }, { name: "reason", label: "原因", type: "textarea", required: true, rows: 5 }] }); }
 
 async function submitModal(event) {

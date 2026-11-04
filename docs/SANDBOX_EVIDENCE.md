@@ -2,13 +2,13 @@
 
 日期：2026-11-04
 
-> 本文件只證明 Foundation 流程驗證通過，不代表重新定義後的完整 MVP 通過。真實市場發現、商品－KOL 關聯、Vendor enrichment 與預計開發名單尚無完成證據。
+> 本文件證明 Foundation 與 M1 公開採集底座通過，不代表重新定義後的完整 MVP 通過。首批真實來源 UAT、商品－KOL 關聯、Vendor enrichment 與預計開發名單尚無完成證據。
 
 ## 自動驗證
 
 - `npm run check`：syntax check 通過。
-- Node test runner：17 tests、17 pass、0 fail。
-- 覆蓋：RBAC、公開唯讀、URL／私有網段防護、正規化、fingerprint、CSV、同名不合併、UNKNOWN 評分、API 全流程、冪等、稽核、Dry-run、禁止 hard delete。
+- Node test runner：23 tests、23 pass、0 fail。
+- 覆蓋：RBAC、公開唯讀、來源治理、robots、DNS／SSRF、公開頁 JSON-LD 解析、URL／私有網段防護、正規化、fingerprint、CSV、同名不合併、UNKNOWN 評分、Collector Run 冪等、稽核、Dry-run、禁止 hard delete。
 
 ## 瀏覽器驗證
 
@@ -17,6 +17,9 @@
 - 六種角色逐一切換驗證，分別顯示：系統治理中心、營運決策台、情報採集工作台、財務觀測台、品牌合作視角、團主合作視角。
 - 各角色側邊選單依工作範圍縮減；SYSTEM_ADMIN 可見完整八頁，VENDOR／HOST 僅見各自合作頁與權限說明。
 - 建立 Observation dialog 可正常開啟並含必填公開 URL。
+- SYSTEM_ADMIN 資料來源頁顯示「MVP 採集底座版」、公開來源治理表、政策／條款／robots 狀態與採集欄位。
+- 「新增公開來源」表單包含來源類型、公開頁 URL、政策、條款審查、自動採集、最短間隔、負責人與審查紀錄。
+- 頁面固定顯示不採集 LINE 群、私人社團、登入後頁面或封閉資料。
 - FINANCE 角色的「建立觀察」按鈕為 disabled；OPS_EDITOR 可開啟表單。
 - 首屏已做桌面視覺檢查；狀態文字、角色、Production／ERP 安全邊界均清楚可見。
 - 應用頁無 JavaScript error；檢查工具只回報瀏覽器 extension 自身 metadata error，非本站程式。

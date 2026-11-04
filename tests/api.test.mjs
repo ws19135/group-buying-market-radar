@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRadarServer } from "../server.mjs";
 
-async function withServer(fn) {
+async function withServer(fn, options = {}) {
   const directory = mkdtempSync(join(tmpdir(), "market-radar-"));
-  const server = createRadarServer({ databaseFile: join(directory, "test.sqlite"), seedDemo: false });
+  const server = createRadarServer({ databaseFile: join(directory, "test.sqlite"), seedDemo: false, ...options });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const base = `http://127.0.0.1:${address.port}`;
@@ -33,12 +33,72 @@ test("health describes an isolated MVP sandbox with ERP writes disabled", async 
   const result = await api(base, "/api/v1/health");
   assert.equal(result.status, 200);
   assert.equal(result.payload.mode, "MVP_SANDBOX");
-  assert.equal(result.payload.mvp_status, "FOUNDATION");
+  assert.equal(result.payload.mvp_status, "DISCOVERY_FOUNDATION");
+  assert.equal(result.payload.collector_runtime_available, true);
   assert.equal(result.payload.real_market_discovery_enabled, false);
   assert.equal(result.payload.live_collectors, 0);
   assert.equal(result.payload.erp_write_enabled, false);
   assert.equal(result.payload.production_touched, false);
 }));
+
+test("approved public source can collect, preserve run metadata and replay safely", async () => {
+  const collector = {
+    async collect(source) {
+      return {
+        records: [{
+          source_url: source.base_url,
+          entity_type: "PRODUCT",
+          title: "山海燕麥脆片限時開團",
+          product_name: "山海燕麥脆片 6 入組",
+          vendor_name: "山海食品",
+          host_name: "好物研究室",
+          platform: "market.example",
+          price_amount: 1080,
+          observed_at: "2026-11-04T12:00:00.000Z",
+          parser_version: "public-page-1.0.0",
+          status: "ACTIVE_OR_RECENT",
+        }],
+        robots_status: "ALLOWED",
+        robots_checked_at: "2026-11-04T12:00:00.000Z",
+        fetched_url: source.base_url,
+        content_hash: "fixture-hash",
+        parser_version: "public-page-1.0.0",
+        observed_at: "2026-11-04T12:00:00.000Z",
+      };
+    },
+  };
+  await withServer(async ({ base }) => {
+    const sourceResult = await api(base, "/api/v1/sources", { method: "POST", role: "SYSTEM_ADMIN", body: {
+      name: "公開團購頁",
+      type: "PUBLIC_GROUP_BUY_PAGE",
+      base_url: "https://market.example/group/oat",
+      policy_status: "APPROVED",
+      terms_status: "REVIEWED_PUBLIC",
+      access_mode: "PUBLIC_NO_LOGIN",
+      scrape_allowed: true,
+      review_notes: "公開頁，不需登入",
+    } });
+    assert.equal(sourceResult.status, 201);
+    const sourceId = sourceResult.payload.source.source_id;
+
+    const health = await api(base, "/api/v1/health");
+    assert.equal(health.payload.real_market_discovery_enabled, true);
+    assert.equal(health.payload.live_collectors, 1);
+
+    const collected = await api(base, `/api/v1/sources/${sourceId}/collect`, { method: "POST", role: "SYSTEM_ADMIN", body: { idempotency_key: "collect-fixture-1" } });
+    assert.equal(collected.status, 201);
+    assert.equal(collected.payload.run.created_count, 1);
+    assert.equal(collected.payload.source.robots_status, "ALLOWED");
+
+    const replayed = await api(base, `/api/v1/sources/${sourceId}/collect`, { method: "POST", role: "SYSTEM_ADMIN", body: { idempotency_key: "collect-fixture-1" } });
+    assert.equal(replayed.status, 200);
+    assert.equal(replayed.payload.replayed, true);
+
+    const runs = await api(base, "/api/v1/runs");
+    assert.equal(runs.payload.items[0].target_url, "https://market.example/group/oat");
+    assert.equal(runs.payload.items[0].run_parser_version, "public-page-1.0.0");
+  }, { collector });
+});
 
 test("MVP flow imports observations, rebuilds leads, reviews, audits and dry-runs", async () => withServer(async ({ base }) => {
   const forbiddenSource = await api(base, "/api/v1/sources", { method: "POST", role: "OPS_EDITOR", body: { name: "來源", base_url: "https://example.com" } });

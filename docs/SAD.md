@@ -1,6 +1,6 @@
-# 系統架構文件（SAD）v0.3
+# 系統架構文件（SAD）v0.4
 
-狀態：Foundation Implemented／Discovery Architecture Planned
+狀態：Discovery Foundation Implemented／Product Graph Planned
 日期：2026-11-04
 
 ## 1. 架構決策
@@ -31,9 +31,11 @@ flowchart TB
 | `server.mjs` | 同源 HTTP、RBAC、輸入上限、安全標頭、靜態檔 | 不提供 ERP write endpoint |
 | `src/domain.mjs` | 正規化、fingerprint、去重候選、評分、CSV、Dry-run | 純領域邏輯，可重現 |
 | `src/database.mjs` | SQLite migration、交易、稽核與查詢 | 資料只在 `.data/` |
+| `src/collector.mjs` | 來源治理驗證、robots、安全 fetch、公開頁解析 | 只處理逐站核准且不需登入的公開頁 |
 | `fixtures/erp-master-snapshot.json` | 合成 ERP 唯讀快照 | 不含真實主檔或個資 |
-| Discovery Worker | 排程／手動執行公開來源採集 | Planned；只處理 Allowlist |
-| Source Adapters | 來源級 fetch／parse／evidence | Planned；逐來源政策審查 |
+| Discovery Worker | 手動執行公開來源採集、Run／Audit | Manual runtime implemented；排程 Planned |
+| Public Page Adapter | Schema.org Product／Event、Open Graph fallback | Implemented；真實來源 UAT Pending |
+| Search／Listing Adapter | 公開搜尋結果或清單發現 | Planned；逐來源政策審查 |
 | Product Graph | Product、GroupBuyEvent、Vendor、KOL 關聯 | Planned |
 | Development Pipeline | 預計開發名單、指派、階段與下一步 | Planned；內部資料 |
 
@@ -49,8 +51,8 @@ flowchart TB
 ## 4. 部署
 
 - 公開：GitHub Actions 執行 `npm run check`，成功後部署 repository 靜態內容至 Pages。
-- Foundation Sandbox：Node.js 22+ 執行 `node server.mjs`，SQLite 自動 migration／seed。
-- 完整 MVP：需要可執行排程 Worker 的受控 runtime 與受管資料庫；部署選型須在 Milestone 1 Owner Gate 核准。
+- Discovery Sandbox：Node.js 22+ 執行 `node server.mjs`，SQLite 自動 migration／seed；核准來源可由管理員手動採集。
+- 完整 MVP：需要可執行排程 Worker 的受控 runtime 與受管資料庫；排程與正式身份屬 Milestone 7。
 - 正式化前：需受管資料庫、SSO、秘密管理、備份、監控、正式 ERP 唯讀 adapter 與 Owner 核准閘門。
 
 ## 5. 可用性與復原

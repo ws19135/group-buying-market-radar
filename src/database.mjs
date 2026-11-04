@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { assertSourceCanCollect, normalizeSourceGovernance } from "./collector.mjs";
 import {
   NORMALIZATION_VERSION,
   PARSER_VERSION,
@@ -26,6 +27,10 @@ function fromJson(value, fallback = null) {
 
 function toJson(value) {
   return JSON.stringify(value ?? null);
+}
+
+function toBoolean(value) {
+  return value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true";
 }
 
 function mapObservation(row) {
@@ -103,6 +108,25 @@ export class RadarDatabase {
         duplicate_count INTEGER NOT NULL DEFAULT 0,
         error_count INTEGER NOT NULL DEFAULT 0,
         errors_json TEXT NOT NULL DEFAULT '[]'
+      );
+      CREATE TABLE IF NOT EXISTS collection_run_metadata (
+        run_id TEXT PRIMARY KEY REFERENCES collection_runs(run_id),
+        target_url TEXT,
+        query_text TEXT,
+        parser_version TEXT NOT NULL,
+        content_hash TEXT,
+        fetched_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS source_governance (
+        source_id TEXT PRIMARY KEY REFERENCES sources(source_id),
+        access_mode TEXT NOT NULL DEFAULT 'PUBLIC_NO_LOGIN',
+        login_required INTEGER NOT NULL DEFAULT 0,
+        terms_status TEXT NOT NULL DEFAULT 'PENDING',
+        robots_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+        review_notes TEXT,
+        owner_name TEXT,
+        collection_interval_minutes INTEGER NOT NULL DEFAULT 1440,
+        robots_checked_at TEXT
       );
       CREATE TABLE IF NOT EXISTS observations (
         observation_id TEXT PRIMARY KEY,
@@ -216,6 +240,9 @@ export class RadarDatabase {
       );
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
       INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES ('001_initial_mvp', datetime('now'));
+      INSERT OR IGNORE INTO source_governance(source_id)
+        SELECT source_id FROM sources;
+      INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES ('002_collector_governance', datetime('now'));
     `);
   }
 
@@ -244,34 +271,76 @@ export class RadarDatabase {
   createSource(input, context = {}) {
     const timestamp = nowIso();
     const baseUrl = input.base_url;
+    const governance = normalizeSourceGovernance(input);
     const row = {
       source_id: input.source_id || newId("src"),
       name: input.name || new URL(baseUrl).hostname,
-      type: input.type || "MANUAL_URL",
+      type: String(input.type || "MANUAL_URL").toUpperCase(),
       base_url: baseUrl,
-      policy_status: input.policy_status || "PENDING",
-      health_status: input.health_status || "UNKNOWN",
-      scrape_allowed: input.scrape_allowed ? 1 : 0,
+      policy_status: String(input.policy_status || "PENDING").toUpperCase(),
+      health_status: String(input.health_status || "UNKNOWN").toUpperCase(),
+      scrape_allowed: toBoolean(input.scrape_allowed) ? 1 : 0,
       active: input.active === false ? 0 : 1,
       parser_version: input.parser_version || PARSER_VERSION,
       created_at: timestamp,
       updated_at: timestamp,
     };
+    const candidate = this.mapSource({ ...row, ...governance, login_required: governance.login_required ? 1 : 0 });
+    if (candidate.scrape_allowed) assertSourceCanCollect(candidate);
     const existing = this.db.prepare("SELECT * FROM sources WHERE base_url = ?").get(baseUrl);
-    if (existing) return { created: false, source: this.mapSource(existing) };
-    this.db.prepare(`INSERT INTO sources(source_id,name,type,base_url,policy_status,health_status,scrape_allowed,active,parser_version,created_at,updated_at)
-      VALUES (@source_id,@name,@type,@base_url,@policy_status,@health_status,@scrape_allowed,@active,@parser_version,@created_at,@updated_at)`).run(row);
-    const source = this.mapSource(row);
-    this.audit({ actorRole: context.actorRole, action: "SOURCE_CREATED", entityType: "SOURCE", entityId: row.source_id, after: source, requestId: context.requestId });
+    if (existing) return { created: false, source: this.getSource(existing.source_id) };
+    this.transaction(() => {
+      this.db.prepare(`INSERT INTO sources(source_id,name,type,base_url,policy_status,health_status,scrape_allowed,active,parser_version,created_at,updated_at)
+        VALUES (@source_id,@name,@type,@base_url,@policy_status,@health_status,@scrape_allowed,@active,@parser_version,@created_at,@updated_at)`).run(row);
+      this.db.prepare(`INSERT INTO source_governance(source_id,access_mode,login_required,terms_status,robots_status,review_notes,owner_name,collection_interval_minutes,robots_checked_at)
+        VALUES (@source_id,@access_mode,@login_required,@terms_status,@robots_status,@review_notes,@owner_name,@collection_interval_minutes,NULL)`).run({
+        source_id: row.source_id,
+        ...governance,
+        login_required: governance.login_required ? 1 : 0,
+      });
+      this.audit({ actorRole: context.actorRole, action: "SOURCE_CREATED", entityType: "SOURCE", entityId: row.source_id, after: candidate, requestId: context.requestId });
+    });
+    const source = this.getSource(row.source_id);
     return { created: true, source };
   }
 
   mapSource(row) {
-    return { ...row, scrape_allowed: Boolean(row.scrape_allowed), active: Boolean(row.active) };
+    return { ...row, scrape_allowed: Boolean(row.scrape_allowed), active: Boolean(row.active), login_required: Boolean(row.login_required) };
   }
 
   listSources() {
-    return this.db.prepare("SELECT * FROM sources ORDER BY active DESC, updated_at DESC").all().map(row => this.mapSource(row));
+    return this.db.prepare(`SELECT s.*, g.access_mode, g.login_required, g.terms_status, g.robots_status, g.review_notes, g.owner_name, g.collection_interval_minutes, g.robots_checked_at
+      FROM sources s LEFT JOIN source_governance g ON g.source_id = s.source_id
+      ORDER BY s.active DESC, s.updated_at DESC`).all().map(row => this.mapSource(row));
+  }
+
+  getSource(id) {
+    const row = this.db.prepare(`SELECT s.*, g.access_mode, g.login_required, g.terms_status, g.robots_status, g.review_notes, g.owner_name, g.collection_interval_minutes, g.robots_checked_at
+      FROM sources s LEFT JOIN source_governance g ON g.source_id = s.source_id WHERE s.source_id = ?`).get(id);
+    return row ? this.mapSource(row) : null;
+  }
+
+  liveCollectorCount() {
+    return this.db.prepare(`SELECT COUNT(*) AS count FROM sources s JOIN source_governance g ON g.source_id = s.source_id
+      WHERE s.active=1 AND s.scrape_allowed=1 AND s.policy_status='APPROVED'
+        AND g.access_mode='PUBLIC_NO_LOGIN' AND g.login_required=0 AND g.terms_status='REVIEWED_PUBLIC'`).get().count;
+  }
+
+  markCollectionSuccess(sourceId, { robotsStatus, robotsCheckedAt } = {}, context = {}) {
+    const timestamp = nowIso();
+    this.transaction(() => {
+      this.db.prepare("UPDATE sources SET health_status='HEALTHY',last_success_at=?,updated_at=? WHERE source_id=?").run(timestamp, timestamp, sourceId);
+      this.db.prepare("UPDATE source_governance SET robots_status=?,robots_checked_at=? WHERE source_id=?").run(robotsStatus || "UNKNOWN", robotsCheckedAt || timestamp, sourceId);
+      this.audit({ actorRole: context.actorRole, action: "SOURCE_COLLECTION_SUCCEEDED", entityType: "SOURCE", entityId: sourceId, after: { health_status: "HEALTHY", robots_status: robotsStatus || "UNKNOWN" }, requestId: context.requestId });
+    });
+    return this.getSource(sourceId);
+  }
+
+  markCollectionFailure(sourceId, error, context = {}) {
+    const timestamp = nowIso();
+    this.db.prepare("UPDATE sources SET health_status='ERROR',last_error_at=?,updated_at=? WHERE source_id=?").run(timestamp, timestamp, sourceId);
+    this.audit({ actorRole: context.actorRole, action: "SOURCE_COLLECTION_FAILED", entityType: "SOURCE", entityId: sourceId, after: { code: error.code || "COLLECTION_FAILED" }, requestId: context.requestId });
+    return this.getSource(sourceId);
   }
 
   ensureManualSource(sourceUrl, context = {}) {
@@ -336,10 +405,11 @@ export class RadarDatabase {
     return { created: true, duplicate: false, observation: mapObservation(row), matches };
   }
 
-  importObservations(records, { sourceId, idempotencyKey, actorRole, requestId } = {}) {
-    if (!Array.isArray(records) || !records.length) throw Object.assign(new Error("匯入內容沒有資料列"), { status: 400, code: "EMPTY_IMPORT" });
+  importObservations(records, { sourceId, idempotencyKey, actorRole, requestId, allowEmpty = false, runMetadata = null, externalErrors = [] } = {}) {
+    if (!Array.isArray(records) || (!records.length && !allowEmpty)) throw Object.assign(new Error("匯入內容沒有資料列"), { status: 400, code: "EMPTY_IMPORT" });
     const source = sourceId ? this.db.prepare("SELECT * FROM sources WHERE source_id = ?").get(sourceId) : null;
     if (sourceId && !source) throw Object.assign(new Error("找不到匯入來源"), { status: 404, code: "SOURCE_NOT_FOUND" });
+    if (!records.length && !sourceId) throw Object.assign(new Error("空採集結果必須指定來源"), { status: 400, code: "SOURCE_REQUIRED" });
     const runKey = idempotencyKey || sha256({ sourceId: sourceId || "MANUAL", records });
     const existingRun = this.db.prepare("SELECT * FROM collection_runs WHERE idempotency_key = ?").get(runKey);
     if (existingRun) return { replayed: true, run: { ...existingRun, errors: fromJson(existingRun.errors_json, []) } };
@@ -349,7 +419,8 @@ export class RadarDatabase {
       created_count: 0, duplicate_count: 0, error_count: 0, errors_json: "[]",
     };
     this.db.prepare(`INSERT INTO collection_runs VALUES (@run_id,@source_id,@status,@idempotency_key,@started_at,@completed_at,@created_count,@duplicate_count,@error_count,@errors_json)`).run(run);
-    const errors = [];
+    const errors = [...externalErrors];
+    run.error_count = errors.length;
     for (let index = 0; index < records.length; index += 1) {
       try {
         const result = this.createObservation({ ...records[index], source_id: sourceId || undefined }, { actorRole, requestId });
@@ -359,7 +430,7 @@ export class RadarDatabase {
         errors.push({ row: index + 1, code: error.code || "IMPORT_ROW_ERROR", message: error.message });
       }
     }
-    run.status = run.error_count === records.length ? "FAILED" : run.error_count ? "PARTIAL" : "COMPLETED";
+    run.status = run.error_count && !run.created_count && !run.duplicate_count ? "FAILED" : run.error_count ? "PARTIAL" : "COMPLETED";
     run.completed_at = nowIso();
     run.errors_json = toJson(errors);
     this.db.prepare(`UPDATE collection_runs SET status=@status,completed_at=@completed_at,created_count=@created_count,duplicate_count=@duplicate_count,error_count=@error_count,errors_json=@errors_json WHERE run_id=@run_id`).run({
@@ -371,8 +442,31 @@ export class RadarDatabase {
       error_count: run.error_count,
       errors_json: run.errors_json,
     });
+    if (runMetadata) {
+      this.db.prepare(`INSERT OR REPLACE INTO collection_run_metadata(run_id,target_url,query_text,parser_version,content_hash,fetched_at)
+        VALUES (@run_id,@target_url,@query_text,@parser_version,@content_hash,@fetched_at)`).run({
+        run_id: run.run_id,
+        target_url: runMetadata.target_url || null,
+        query_text: runMetadata.query_text || null,
+        parser_version: runMetadata.parser_version || PARSER_VERSION,
+        content_hash: runMetadata.content_hash || null,
+        fetched_at: runMetadata.fetched_at || run.completed_at,
+      });
+    }
     this.audit({ actorRole, action: "IMPORT_COMPLETED", entityType: "COLLECTION_RUN", entityId: run.run_id, after: { ...run, errors }, requestId });
     return { replayed: false, run: { ...run, errors } };
+  }
+
+  recordCollectionFailure(sourceId, { idempotencyKey, error, runMetadata = null } = {}, context = {}) {
+    return this.importObservations([], {
+      sourceId,
+      idempotencyKey,
+      actorRole: context.actorRole,
+      requestId: context.requestId,
+      allowEmpty: true,
+      runMetadata,
+      externalErrors: [{ row: null, code: error.code || "COLLECTION_FAILED", message: error.message }],
+    });
   }
 
   listObservations({ query = "", entityType = "", status = "", page = 1, pageSize = 50 } = {}) {
@@ -546,7 +640,15 @@ export class RadarDatabase {
   }
 
   listRuns() {
-    return this.db.prepare("SELECT * FROM collection_runs ORDER BY started_at DESC").all().map(row => ({ ...row, errors: fromJson(row.errors_json, []) }));
+    return this.db.prepare(`SELECT r.*, m.target_url, m.query_text, m.parser_version AS run_parser_version, m.content_hash, m.fetched_at
+      FROM collection_runs r LEFT JOIN collection_run_metadata m ON m.run_id = r.run_id ORDER BY r.started_at DESC`).all().map(row => ({ ...row, errors: fromJson(row.errors_json, []) }));
+  }
+
+  getRunByIdempotencyKey(key) {
+    if (!key) return null;
+    const row = this.db.prepare(`SELECT r.*, m.target_url, m.query_text, m.parser_version AS run_parser_version, m.content_hash, m.fetched_at
+      FROM collection_runs r LEFT JOIN collection_run_metadata m ON m.run_id = r.run_id WHERE r.idempotency_key = ?`).get(key);
+    return row ? { ...row, errors: fromJson(row.errors_json, []) } : null;
   }
 
   listAudit({ limit = 100 } = {}) {
@@ -564,6 +666,7 @@ export class RadarDatabase {
       pending_review: scalar("SELECT COUNT(*) AS count FROM leads WHERE stage IN ('DISCOVERED','SUBMITTED','NEEDS_MORE_DATA')"),
       promotion_drafts: scalar("SELECT COUNT(*) AS count FROM promotion_drafts"),
       sources,
+      live_collectors: this.liveCollectorCount(),
       source_health_percent: sources ? Math.round(healthy / sources * 100) : null,
     };
   }

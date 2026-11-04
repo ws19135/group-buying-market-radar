@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RadarDatabase } from "./src/database.mjs";
-import { LEAD_TYPES, REVIEW_ACTIONS, newId, parseImportPayload, validatePublicUrl } from "./src/domain.mjs";
+import { PublicPageCollector } from "./src/collector.mjs";
+import { LEAD_TYPES, REVIEW_ACTIONS, newId, parseImportPayload, sha256, validatePublicUrl } from "./src/domain.mjs";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const DEFAULT_DB = join(ROOT, ".data", "market-radar.sqlite");
@@ -81,6 +82,7 @@ export function createRadarServer({
   seedDemo = process.env.MR_SEED_DEMO !== "false",
   writeEnabled = process.env.MR_SANDBOX_WRITE_ENABLED !== "false",
   erpSnapshot = DEFAULT_ERP_SNAPSHOT,
+  collector = new PublicPageCollector(),
 } = {}) {
   const database = new RadarDatabase(databaseFile);
   if (seedDemo) database.seedDemo();
@@ -96,7 +98,8 @@ export function createRadarServer({
           throw Object.assign(new Error("Sandbox 寫入已停用"), { status: 403, code: "SANDBOX_WRITE_DISABLED" });
         }
         if (request.method === "GET" && url.pathname === "/api/v1/health") {
-          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", mvp_status: "FOUNDATION", real_market_discovery_enabled: false, live_collectors: 0, write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
+          const liveCollectors = database.liveCollectorCount();
+          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", mvp_status: "DISCOVERY_FOUNDATION", collector_runtime_available: true, real_market_discovery_enabled: liveCollectors > 0, live_collectors: liveCollectors, write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
         }
         if (request.method === "GET" && url.pathname === "/api/v1/dashboard") {
           requireCapability(context, "view");
@@ -112,6 +115,47 @@ export function createRadarServer({
           const validation = validatePublicUrl(body.base_url || "");
           if (!validation.ok) throw Object.assign(new Error(validation.reason), { status: 400, code: validation.code });
           return sendJson(response, 201, database.createSource({ ...body, base_url: validation.normalizedUrl }, context), requestId);
+        }
+        const sourceCollectMatch = url.pathname.match(/^\/api\/v1\/sources\/([^/]+)\/collect$/);
+        if (request.method === "POST" && sourceCollectMatch) {
+          requireCapability(context, "source_admin");
+          const body = await readJson(request);
+          const sourceId = decodeURIComponent(sourceCollectMatch[1]);
+          const source = database.getSource(sourceId);
+          if (!source) throw Object.assign(new Error("找不到資料來源"), { status: 404, code: "SOURCE_NOT_FOUND" });
+          const replay = database.getRunByIdempotencyKey(body.idempotency_key);
+          if (replay) return sendJson(response, 200, { replayed: true, run: replay, source, collector: null }, requestId);
+          if (source.last_success_at) {
+            const nextAllowedAt = new Date(source.last_success_at).getTime() + Number(source.collection_interval_minutes || 1440) * 60_000;
+            if (Date.now() < nextAllowedAt) throw Object.assign(new Error("尚未到此來源的下一次允許採集時間"), { status: 429, code: "SOURCE_RATE_LIMITED" });
+          }
+          try {
+            const result = await collector.collect(source);
+            const idempotencyKey = body.idempotency_key || sha256({ source_id: sourceId, content_hash: result.content_hash, parser_version: result.parser_version });
+            const imported = database.importObservations(result.records, {
+              sourceId,
+              idempotencyKey,
+              allowEmpty: true,
+              runMetadata: {
+                target_url: result.fetched_url,
+                query_text: body.query || null,
+                parser_version: result.parser_version,
+                content_hash: result.content_hash,
+                fetched_at: result.observed_at,
+              },
+              ...context,
+            });
+            const updatedSource = database.markCollectionSuccess(sourceId, { robotsStatus: result.robots_status, robotsCheckedAt: result.robots_checked_at }, context);
+            return sendJson(response, 201, { ...imported, source: updatedSource, collector: { parser_version: result.parser_version, fetched_url: result.fetched_url, emitted_count: result.records.length } }, requestId);
+          } catch (error) {
+            database.markCollectionFailure(sourceId, error, context);
+            database.recordCollectionFailure(sourceId, {
+              idempotencyKey: body.idempotency_key || sha256({ source_id: sourceId, request_id: requestId, failed_at: new Date().toISOString() }),
+              error,
+              runMetadata: { target_url: source.base_url, query_text: body.query || null, parser_version: source.parser_version },
+            }, context);
+            throw error;
+          }
         }
         if (request.method === "GET" && url.pathname === "/api/v1/observations") {
           requireCapability(context, "view");
