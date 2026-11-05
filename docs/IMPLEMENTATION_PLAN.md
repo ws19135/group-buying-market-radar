@@ -42,7 +42,7 @@ Gate B：Passed。30 筆人工抽樣 30／30 正確（100%）；全部事件皆�
 
 ## Milestone 3 — 商品中心與跨來源去重
 
-狀態：Planned
+狀態：Done（2026-11-05）
 
 1. 新增 `ProductCandidate`、`ProductAlias`、`GroupBuyEvent`。
 2. 以品牌、型號／規格、官方 URL、條碼等穩定證據建立 match candidate。
@@ -50,11 +50,11 @@ Gate B：Passed。30 筆人工抽樣 30／30 正確（100%）；全部事件皆�
 4. 商品詳情頁彙整所有來源、價格區間、團期與開團 KOL。
 5. 保存 merge／split 的人工決策與完整稽核。
 
-Gate C：同商品跨 KOL／跨來源可正確彙整，錯誤合併率為 0。
+Gate C：Passed。穩定證據可自動彙整；只靠同名的候選維持人工決策；API UAT 已驗證 merge、split 與 Audit。
 
 ## Milestone 4 — 廠商公開資料補充
 
-狀態：Planned
+狀態：Done（2026-11-05）
 
 1. 從商品與來源建立 `VendorCandidate`。
 2. 補充公開商務資料：正式／顯示名稱、官網、公開合作頁、公開商務 Email、品類、地區與社群網址。
@@ -62,11 +62,11 @@ Gate C：同商品跨 KOL／跨來源可正確彙整，錯誤合併率為 0。
 4. 對既有 ERP Vendor 執行唯讀比對；只依同名不得連結。
 5. 顯示缺值與證據充分度，不推測統編、營收或私人聯絡方式。
 
-Gate D：從任何商品可追到廠商候選及其 Evidence。
+Gate D：Passed。每個商品均可追到 VendorCandidate；未知廠商保持 `NEEDS_ENRICHMENT`，人工補充的每個公開欄位都附 Evidence。現有兩個公開來源未提供多數廠商官網／聯絡資料，因此真實候選不會被猜值。
 
 ## Milestone 5 — 商品 × KOL／團主關聯
 
-狀態：Planned
+狀態：Done（2026-11-05）
 
 1. 新增 `KolCandidate` 與 `KolProductRelation`。
 2. 每筆關聯保存平台、handle、來源 URL、團期、首次／最後觀察時間與狀態。
@@ -74,11 +74,11 @@ Gate D：從任何商品可追到廠商候選及其 Evidence。
 4. 同一 KOL 跨平台只建立 match candidate，未確認前不可自動合併。
 5. 不蒐集登入後粉絲數、私人互動、轉換率或 GMV。
 
-Gate E：同一商品可列出多位 KOL，且每一筆關聯都能回到公開證據。
+Gate E：Passed。真實資料已建立 151 筆商品－KOL 關聯、10 個 KOL 候選；每筆 relation 保留事件與公開來源。
 
 ## Milestone 6 — 預計開發名單與指派
 
-狀態：Planned
+狀態：Done（2026-11-05）
 
 1. 新增 `DevelopmentProspect`、`Assignment`、`DevelopmentActivity`。
 2. OPS_EDITOR 可從 VendorCandidate 點選「加入預計開發名單」。
@@ -87,7 +87,7 @@ Gate E：同一商品可列出多位 KOL，且每一筆關聯都能回到公開�
 5. 同一 Vendor 只能有一筆有效 Prospect；重複加入須回傳既有項目。
 6. 所有指派、備註與狀態變更寫入 Audit；MVP 不自動發信或私訊。
 
-Gate F：開團人員能看到自己的預計開發清單與下一步，主管能看到整體 Pipeline。
+Gate F：Passed。OPS_EDITOR 可冪等加入與追加活動；OPS_MANAGER／SYSTEM_ADMIN 可指派、設定優先序、下一步與推進階段；所有變更寫入 Audit。真實資料初始為 0 筆 Prospect，等待團隊從廠商候選主動加入。
 
 ## Milestone 7 — 內部部署、排程與安全
 

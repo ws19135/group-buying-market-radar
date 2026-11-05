@@ -2,17 +2,17 @@ export const ROLES = {
   SYSTEM_ADMIN: {
     label: "系統管理員",
     short: "Admin",
-    capabilities: ["view", "review", "approve", "source_admin", "integration_dry_run"]
+    capabilities: ["view", "review", "approve", "source_admin", "integration_dry_run", "product_review", "vendor_enrich", "pipeline_view", "prospect_create", "prospect_manage"]
   },
   OPS_MANAGER: {
     label: "營運主管",
     short: "Manager",
-    capabilities: ["view", "review", "approve", "integration_dry_run"]
+    capabilities: ["view", "review", "approve", "integration_dry_run", "product_review", "vendor_enrich", "pipeline_view", "prospect_create", "prospect_manage"]
   },
   OPS_EDITOR: {
     label: "營運編輯",
     short: "Editor",
-    capabilities: ["view", "review"]
+    capabilities: ["view", "review", "vendor_enrich", "pipeline_view", "prospect_create"]
   },
   FINANCE: {
     label: "財務",

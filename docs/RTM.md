@@ -1,4 +1,4 @@
-# 需求追溯矩陣（RTM）v0.4
+# 需求追溯矩陣（RTM）v0.9
 
 | 需求 | 實作 | 自動驗證 | 狀態 |
 |---|---|---|---|
@@ -10,9 +10,9 @@
 | FR-05 人工審核 | review endpoint、RBAC、audit | forbidden／approve／audit tests | Done |
 | FR-06 Promotion Dry-run | draft + fixture executor | name-only conflict、end-to-end | Done |
 | FR-07 角色專屬工作台 | dual-mode UI、six distinct homes/navigation | permissions + role-experience tests | Done |
-| FR-08 商品／廠商／KOL 關聯 | ProductCandidate、GroupBuyEvent、relations | graph + dedup UAT | Not Started / MVP Blocker |
-| FR-09 廠商公開資料補充 | Vendor enrichment + field evidence | enrichment contract tests | Not Started / MVP Blocker |
-| FR-10 預計開發名單 | DevelopmentProspect、Assignment、Activity | RBAC + idempotency + audit tests | Not Started / MVP Blocker |
+| FR-08 商品／廠商／KOL 關聯 | ProductCandidate、ProductAlias、GroupBuyEvent、KolProductRelation | stable identity、name-only candidate、merge／split、detail UAT | M3／M5 Done |
+| FR-09 廠商公開資料補充 | VendorCandidate、VendorEvidence、field-level enrichment | enrichment evidence + UNKNOWN tests | M4 Done |
+| FR-10 預計開發名單 | DevelopmentProspect、Assignment、Activity、Pipeline UI | RBAC + idempotency + stage + audit tests | M6 Done |
 | NFR 可追溯／可重現 | evidence、version、hash、request ID | domain／API tests | Done |
 | NFR 安全邊界 | Pages no API、CSP、policy、robots、DNS／SSRF、redirect、timeout、rate limit、1 MB | health、URL、Collector contract tests | M1 Done；正式身份／部署 pending |
 | NFR 效能 10k／2s | 分頁與 indexes | 尚無 10k benchmark | Deferred |

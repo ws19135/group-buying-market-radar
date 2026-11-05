@@ -160,6 +160,13 @@ tbody tr:hover { background: #fbfbfe; }
 .subsection-title { margin: 24px 0 10px; font-size: 14px; }
 .table-action { border: 1px solid var(--line); border-radius: 7px; background: #fff; padding: 6px 9px; color: var(--ink); cursor: pointer; font-size: 10px; }
 .table-action:disabled { opacity: .45; cursor: not-allowed; }
+.detail-panel { margin-top: 18px; border-color: color-mix(in srgb,var(--role-accent) 28%,var(--line)); }
+.detail-panel > .panel-body { background: #fbfcff; }
+.detail-panel .table-wrap { box-shadow: none; }
+.detail-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; color: var(--muted); font-size: 10px; }
+.detail-meta span:not(.badge) { padding-right: 18px; border-right: 1px solid var(--line); }
+.detail-meta span:last-child { border-right: 0; }
+.compact-stats .stat { min-height: 112px; }
 
 .modal { width: min(760px, calc(100vw - 32px)); max-height: min(86vh, 820px); border: 0; border-radius: 18px; padding: 0; box-shadow: 0 24px 80px rgba(24,31,47,.28); color: var(--ink); }
 .modal::backdrop { background: rgba(24,31,47,.48); backdrop-filter: blur(3px); }

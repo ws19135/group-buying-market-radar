@@ -1,4 +1,4 @@
-# Group Buying Market Radar — M2 Real Discovery
+# Group Buying Market Radar — M6 Development Pipeline
 
 SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11-04 重新定義 MVP：系統的第一個驗收閘門必須能實際發現市場上正在開團的商品；再由商品串出廠商公開資料、正在開團的 KOL／團主，以及可由開團人員加入與指派的預計開發名單。
 
@@ -6,14 +6,14 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 
 ## 目前狀態
 
-`MVP_STATUS=M2_DISCOVERY_VALIDATED`：v0.6 已接入兩個免登入公開來源與兩種專用 Adapter。2026-11-05 真實 UAT 擷取 151 筆開團事件，兩站皆 0 row error，30 筆人工抽樣 precision 為 100%，通過 Milestone 2 Gate B。**完整 MVP 尚未完成；M3～M8 的商品去重、廠商補充、KOL 關聯、預計開發名單與內部部署仍待建置。**
+`MVP_STATUS=M6_PIPELINE_READY`：v0.9 已完成「真實開團事件 → 商品中心 → 廠商公開資料 → 商品 × KOL → 預計開發 Pipeline」。2026-11-05 的本機資料有 151 筆公開開團事件、151 個商品候選、10 個 KOL 候選、151 筆商品－KOL 關聯與 3 組待人工確認的同名商品；29 項自動測試全數通過。**這是 M6 可操作交付版，不是 `MVP_COMPLETE`；M7 受控部署／正式登入與 M8 完整 UAT 仍待完成。**
 
 | 能力 | 狀態 |
 |---|---|
 | 真實發現市場上正在開團的商品 | M2 Done：2 個來源、151 筆事件、Gate B 通過 |
-| 以商品彙整所有開團 KOL／團主 | Not implemented |
-| 自動補充廠商公開資料與證據 | Not implemented |
-| 加入、指派及追蹤預計開發名單 | Not implemented |
+| 以商品彙整所有開團 KOL／團主 | M3／M5 Done：151 筆關聯、10 個公開 KOL／團主 |
+| 補充廠商公開資料與證據 | M4 Done：候選、逐欄 Evidence 與人工補充流程；未知值不猜測 |
+| 加入、指派及追蹤預計開發名單 | M6 Done：冪等加入、RBAC 指派、階段、下一步與 Activity |
 | Observation／Evidence／去重／評分 | Implemented |
 | 人工審核、Audit、Promotion Dry-run | Implemented |
 | 六套角色工作台 | Implemented |
@@ -23,7 +23,7 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 | 模式 | 用途 | 寫入範圍 |
 |---|---|---|
 | GitHub Pages 公開預覽 | 免登入展示六套角色工作台與合成資料 | 完全唯讀，沒有 API、資料庫或秘密 |
-| 本機 M2 真實採集版 | 真實公開來源採集與既有流程 UAT | 只寫入本機 SQLite；ERP 僅讀取 fixture 並執行 Dry-run |
+| 本機 M6 開發雷達版 | 真實公開來源採集、商品／廠商／KOL 關聯與開發 Pipeline | 只寫入本機 SQLite；ERP 僅讀取 fixture 並執行 Dry-run |
 
 公開預覽：<https://ws19135.github.io/group-buying-market-radar/>
 
@@ -46,6 +46,10 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 - BabyBuyRadar 開團預告 Adapter：商品、公開 KOL／handle、預計開團日與原始來源回鏈
 - NickJufu 團購行事曆 Adapter：商品、團主、開團／結團日期、品類與文章回鏈
 - 市場發現 Feed：最新、進行中、即將開團、7 日內結束、待確認與來源異常統計
+- 商品中心：穩定公開證據自動彙整；同名只產生人工 match candidate；支援 merge／split 與 Audit
+- 廠商公開資料：每個商品建立 VendorCandidate；官網、合作頁、公開商務 Email 等欄位保留 Evidence
+- 商品 × KOL：以公開平台與 handle 建立關聯，商品與 KOL 兩側都可彙整事件
+- 預計開發 Pipeline：加入廠商、指派開團人員、設定優先序／下一步／階段與 append-only 活動紀錄
 
 ## 資料流程
 
@@ -58,10 +62,11 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 ```bash
 npm run check
 npm run m2:collect
+npm run m6:rebuild
 npm start
 ```
 
-`npm run m2:collect` 會從兩個核准公開來源更新本機 SQLite，並輸出 Gate B 報告；接著執行 `npm start`，開啟 <http://localhost:4173>。首次啟動會建立 `.data/market-radar.sqlite`、登記兩個核准來源並載入合成示範資料。可用 query string 指定角色：
+`npm run m2:collect` 會從兩個核准公開來源更新本機 SQLite；`npm run m6:rebuild` 會由非合成 Observation 重建商品、廠商、KOL 與關聯；接著執行 `npm start`，開啟 <http://localhost:4173>。首次啟動會建立 `.data/market-radar.sqlite`。可用 query string 指定角色：
 
 ```text
 http://localhost:4173/?role=OPS_EDITOR#observations
@@ -93,6 +98,7 @@ http://localhost:4173/?role=OPS_EDITOR#observations
 - [公開來源 Allowlist 與治理規則](docs/SOURCE_ALLOWLIST.md)
 - [Milestone 2 首批公開來源候選](docs/SOURCE_CANDIDATES.md)
 - [Milestone 2 真實 UAT 證據](docs/M2_UAT_EVIDENCE.md)
+- [Milestone 3～6 驗收證據](docs/M3_M6_UAT_EVIDENCE.md)
 - [Collector 契約](docs/COLLECTOR_CONTRACT.md)
 - [SRS 與驗收狀態](docs/SRS.md)
 - [系統架構](docs/SAD.md)
@@ -110,7 +116,7 @@ http://localhost:4173/?role=OPS_EDITOR#observations
 npm test
 ```
 
-測試涵蓋六套角色體驗與導覽隔離、權限矩陣、公開來源治理、robots.txt、DNS／SSRF、HTML／JSON-LD 解析、回應限制、CSV、去重、UNKNOWN 評分、Collector Run 冪等、稽核、Promotion Dry-run 與禁止 hard delete。
+測試涵蓋六套角色體驗與導覽隔離、權限矩陣、公開來源治理、robots.txt、DNS／SSRF、HTML／JSON-LD 解析、回應限制、CSV、商品穩定證據去重、同名人工 merge／split、廠商逐欄 Evidence、KOL 關聯、開發 Pipeline 冪等／RBAC／Audit、UNKNOWN 評分、Promotion Dry-run 與禁止 hard delete。
 
 ## 授權
 

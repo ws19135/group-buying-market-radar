@@ -19,6 +19,16 @@ import {
   scoreVendor,
   sha256,
 } from "./domain.mjs";
+import {
+  MARKET_GRAPH_VERSION,
+  assertProspectTransition,
+  deterministicGraphId,
+  kolIdentity,
+  normalizeProspectPriority,
+  normalizeProspectStage,
+  productIdForObservation,
+  vendorIdentity,
+} from "./market-graph.mjs";
 
 function fromJson(value, fallback = null) {
   if (value === null || value === undefined || value === "") return fallback;
@@ -62,6 +72,25 @@ function mapPromotion(row) {
     match_candidates: fromJson(row.match_candidates_json, []),
     dry_run_result: fromJson(row.dry_run_result_json, null),
   };
+}
+
+function mapProduct(row) {
+  if (!row) return null;
+  return { ...row, normalized_specs: fromJson(row.normalized_specs_json, {}) };
+}
+
+function mapVendor(row) {
+  if (!row) return null;
+  return { ...row, social_urls: fromJson(row.social_urls_json, []) };
+}
+
+function mapKol(row) {
+  return row ? { ...row } : null;
+}
+
+function mapProspect(row) {
+  if (!row) return null;
+  return { ...row, metadata: fromJson(row.metadata_json, {}) };
 }
 
 export class RadarDatabase {
@@ -239,10 +268,173 @@ export class RadarDatabase {
         created_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC);
+      CREATE TABLE IF NOT EXISTS product_candidates (
+        product_id TEXT PRIMARY KEY,
+        canonical_name TEXT NOT NULL,
+        normalized_key TEXT NOT NULL,
+        brand TEXT,
+        category TEXT,
+        normalized_specs_json TEXT NOT NULL DEFAULT '{}',
+        identity_basis TEXT NOT NULL,
+        identity_value TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'ACTIVE',
+        merged_into_product_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_products_name ON product_candidates(normalized_key);
+      CREATE INDEX IF NOT EXISTS idx_products_status ON product_candidates(status);
+      CREATE TABLE IF NOT EXISTS product_aliases (
+        alias_id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL REFERENCES product_candidates(product_id),
+        observation_id TEXT NOT NULL UNIQUE REFERENCES observations(observation_id),
+        alias_name TEXT NOT NULL,
+        normalized_key TEXT NOT NULL,
+        match_basis TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_product_aliases_product ON product_aliases(product_id);
+      CREATE TABLE IF NOT EXISTS product_match_candidates (
+        product_match_id TEXT PRIMARY KEY,
+        product_a_id TEXT NOT NULL REFERENCES product_candidates(product_id),
+        product_b_id TEXT NOT NULL REFERENCES product_candidates(product_id),
+        confidence REAL NOT NULL,
+        reasons_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        reviewed_by TEXT,
+        reviewed_at TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(product_a_id, product_b_id)
+      );
+      CREATE TABLE IF NOT EXISTS vendor_candidates (
+        vendor_id TEXT PRIMARY KEY,
+        display_name TEXT,
+        normalized_key TEXT,
+        identity_basis TEXT NOT NULL,
+        identity_value TEXT NOT NULL,
+        website_url TEXT,
+        collaboration_url TEXT,
+        public_business_email TEXT,
+        category TEXT,
+        region TEXT,
+        social_urls_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL,
+        match_status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_vendor_status ON vendor_candidates(status);
+      CREATE TABLE IF NOT EXISTS vendor_evidence (
+        vendor_evidence_id TEXT PRIMARY KEY,
+        vendor_id TEXT NOT NULL REFERENCES vendor_candidates(vendor_id),
+        observation_id TEXT REFERENCES observations(observation_id),
+        field TEXT NOT NULL,
+        value TEXT NOT NULL,
+        source_url TEXT NOT NULL,
+        captured_at TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        parser_version TEXT NOT NULL,
+        UNIQUE(vendor_id, field, value, source_url)
+      );
+      CREATE TABLE IF NOT EXISTS product_vendor_links (
+        product_id TEXT NOT NULL REFERENCES product_candidates(product_id),
+        vendor_id TEXT NOT NULL REFERENCES vendor_candidates(vendor_id),
+        evidence_url TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(product_id, vendor_id)
+      );
+      CREATE TABLE IF NOT EXISTS kol_candidates (
+        kol_id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        platform TEXT,
+        handle TEXT,
+        identity_basis TEXT NOT NULL,
+        identity_value TEXT NOT NULL,
+        public_collaboration_url TEXT,
+        public_business_email TEXT,
+        status TEXT NOT NULL,
+        match_status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_kol_handle ON kol_candidates(platform, handle);
+      CREATE TABLE IF NOT EXISTS group_buy_events (
+        event_id TEXT PRIMARY KEY,
+        observation_id TEXT NOT NULL UNIQUE REFERENCES observations(observation_id),
+        product_id TEXT NOT NULL REFERENCES product_candidates(product_id),
+        vendor_id TEXT REFERENCES vendor_candidates(vendor_id),
+        kol_id TEXT REFERENCES kol_candidates(kol_id),
+        source_url TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        starts_at TEXT,
+        ends_at TEXT,
+        event_status TEXT NOT NULL,
+        price_amount REAL,
+        currency TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_events_product ON group_buy_events(product_id);
+      CREATE INDEX IF NOT EXISTS idx_events_status ON group_buy_events(event_status);
+      CREATE TABLE IF NOT EXISTS kol_product_relations (
+        relation_id TEXT PRIMARY KEY,
+        kol_id TEXT NOT NULL REFERENCES kol_candidates(kol_id),
+        product_id TEXT NOT NULL REFERENCES product_candidates(product_id),
+        event_id TEXT NOT NULL UNIQUE REFERENCES group_buy_events(event_id),
+        platform TEXT,
+        handle TEXT,
+        source_url TEXT NOT NULL,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        relation_status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_relations_product ON kol_product_relations(product_id);
+      CREATE INDEX IF NOT EXISTS idx_relations_kol ON kol_product_relations(kol_id);
+      CREATE TABLE IF NOT EXISTS development_prospects (
+        prospect_id TEXT PRIMARY KEY,
+        vendor_id TEXT NOT NULL UNIQUE REFERENCES vendor_candidates(vendor_id),
+        owner_id TEXT,
+        priority TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        next_action_at TEXT,
+        created_by TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_prospects_owner_stage ON development_prospects(owner_id, stage);
+      CREATE TABLE IF NOT EXISTS development_assignments (
+        assignment_id TEXT PRIMARY KEY,
+        prospect_id TEXT NOT NULL REFERENCES development_prospects(prospect_id),
+        owner_id TEXT NOT NULL,
+        assigned_by TEXT NOT NULL,
+        assigned_at TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS development_activities (
+        activity_id TEXT PRIMARY KEY,
+        prospect_id TEXT NOT NULL REFERENCES development_prospects(prospect_id),
+        actor_role TEXT NOT NULL,
+        actor_id TEXT,
+        action_type TEXT NOT NULL,
+        note TEXT,
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_activities_prospect ON development_activities(prospect_id, created_at DESC);
       INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES ('001_initial_mvp', datetime('now'));
       INSERT OR IGNORE INTO source_governance(source_id)
         SELECT source_id FROM sources;
       INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES ('002_collector_governance', datetime('now'));
+      INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES ('003_m3_m6_market_graph', datetime('now'));
+      UPDATE sources SET type='SYNTHETIC_DEMO'
+        WHERE type='MANUAL_URL' AND base_url IN ('https://example.com/','https://example.org/','https://example.net/');
     `);
   }
 
@@ -550,6 +742,374 @@ export class RadarDatabase {
     };
   }
 
+  rebuildMarketGraph(context = {}) {
+    const observations = this.listObservations({ pageSize: 10_000 }).items
+      .filter(item => this.getSource(item.source_id)?.type !== "SYNTHETIC_DEMO")
+      .filter(item => item.product_name || item.entity_type === "PRODUCT" || item.entity_type === "CAMPAIGN");
+    const timestamp = nowIso();
+    const stats = { products: 0, events: 0, vendors: 0, kols: 0, relations: 0, product_match_candidates: 0 };
+    this.transaction(() => {
+      for (const observation of observations) {
+        const productName = observation.product_name || observation.title;
+        const productIdentity = productIdForObservation(observation);
+        const existingProduct = this.db.prepare("SELECT * FROM product_candidates WHERE product_id = ?").get(productIdentity.product_id);
+        if (!existingProduct) {
+          this.db.prepare(`INSERT INTO product_candidates(product_id,canonical_name,normalized_key,brand,category,normalized_specs_json,identity_basis,identity_value,status,merged_into_product_id,created_at,updated_at)
+            VALUES (?,?,?,?,?,'{}',?,?,'ACTIVE',NULL,?,?)`).run(
+            productIdentity.product_id, productName, normalizeKey(productName), observation.brand || null, observation.category || null,
+            productIdentity.basis, productIdentity.value, timestamp, timestamp,
+          );
+          stats.products += 1;
+        } else {
+          this.db.prepare(`UPDATE product_candidates SET canonical_name=COALESCE(NULLIF(canonical_name,''),?),brand=COALESCE(brand,?),category=COALESCE(category,?),updated_at=? WHERE product_id=?`)
+            .run(productName, observation.brand || null, observation.category || null, timestamp, productIdentity.product_id);
+        }
+
+        const aliasId = deterministicGraphId("alias", observation.observation_id);
+        this.db.prepare(`INSERT OR IGNORE INTO product_aliases(alias_id,product_id,observation_id,alias_name,normalized_key,match_basis,confidence,status,created_at)
+          VALUES (?,?,?,?,?,?,?,'ACTIVE',?)`).run(aliasId, productIdentity.product_id, observation.observation_id, productName, normalizeKey(productName), productIdentity.basis, productIdentity.confidence, timestamp);
+
+        if (!productIdentity.auto_merge) {
+          const sameNameProducts = this.db.prepare(`SELECT product_id FROM product_candidates WHERE normalized_key=? AND product_id<>? AND status='ACTIVE'`).all(normalizeKey(productName), productIdentity.product_id);
+          for (const other of sameNameProducts) {
+            const [productA, productB] = [productIdentity.product_id, other.product_id].sort();
+            const matchId = deterministicGraphId("pmatch", `${productA}:${productB}`);
+            const result = this.db.prepare(`INSERT OR IGNORE INTO product_match_candidates(product_match_id,product_a_id,product_b_id,confidence,reasons_json,status,created_at)
+              VALUES (?,?,?,0.55,?,'PENDING',?)`).run(matchId, productA, productB, toJson(["EXACT_NORMALIZED_NAME", "NAME_ONLY_REQUIRES_HUMAN_REVIEW"]), timestamp);
+            if (result.changes) stats.product_match_candidates += 1;
+          }
+        }
+
+        const vendorIdentityResult = vendorIdentity(observation, productIdentity.product_id);
+        const vendorId = deterministicGraphId("vendor", `${vendorIdentityResult.basis}:${vendorIdentityResult.value}`);
+        const vendorExists = this.db.prepare("SELECT vendor_id FROM vendor_candidates WHERE vendor_id=?").get(vendorId);
+        if (!vendorExists) {
+          this.db.prepare(`INSERT INTO vendor_candidates(vendor_id,display_name,normalized_key,identity_basis,identity_value,website_url,collaboration_url,public_business_email,category,region,social_urls_json,status,match_status,created_at,updated_at)
+            VALUES (?,?,?,?,?,NULL,NULL,?,?,NULL,'[]',?,?,?,?)`).run(
+            vendorId, observation.vendor_name || null, normalizeKey(observation.vendor_name), vendorIdentityResult.basis, vendorIdentityResult.value,
+            observation.public_email || null, observation.category || null,
+            observation.vendor_name ? (observation.public_email ? "PARTIAL" : "NEEDS_MORE_DATA") : "NEEDS_ENRICHMENT",
+            vendorIdentityResult.confidence >= 0.95 ? "STABLE" : "REVIEW_REQUIRED", timestamp, timestamp,
+          );
+          stats.vendors += 1;
+        } else if (observation.vendor_name || observation.public_email || observation.category) {
+          this.db.prepare(`UPDATE vendor_candidates SET display_name=COALESCE(display_name,?),normalized_key=COALESCE(normalized_key,?),public_business_email=COALESCE(public_business_email,?),category=COALESCE(category,?),updated_at=? WHERE vendor_id=?`)
+            .run(observation.vendor_name || null, normalizeKey(observation.vendor_name), observation.public_email || null, observation.category || null, timestamp, vendorId);
+        }
+        const vendorEvidence = [
+          ["display_name", observation.vendor_name],
+          ["public_business_email", observation.public_email],
+          ["category", observation.category],
+        ];
+        for (const [field, value] of vendorEvidence) {
+          if (!value) continue;
+          const evidenceId = deterministicGraphId("vevd", `${vendorId}:${field}:${value}:${observation.source_url}`);
+          this.db.prepare(`INSERT OR IGNORE INTO vendor_evidence(vendor_evidence_id,vendor_id,observation_id,field,value,source_url,captured_at,confidence,parser_version)
+            VALUES (?,?,?,?,?,?,?,?,?)`).run(evidenceId, vendorId, observation.observation_id, field, String(value), observation.source_url, observation.observed_at, observation.confidence ?? vendorIdentityResult.confidence, observation.parser_version);
+        }
+        this.db.prepare(`INSERT OR IGNORE INTO product_vendor_links(product_id,vendor_id,evidence_url,confidence,status,created_at) VALUES (?,?,?,?,?,?)`)
+          .run(productIdentity.product_id, vendorId, observation.source_url, vendorIdentityResult.confidence, observation.vendor_name ? "OBSERVED" : "NEEDS_ENRICHMENT", timestamp);
+
+        let kolId = null;
+        if (observation.host_name) {
+          const identity = kolIdentity(observation);
+          kolId = deterministicGraphId("kol", `${identity.basis}:${identity.value}`);
+          const kolExists = this.db.prepare("SELECT kol_id FROM kol_candidates WHERE kol_id=?").get(kolId);
+          if (!kolExists) {
+            this.db.prepare(`INSERT INTO kol_candidates(kol_id,display_name,platform,handle,identity_basis,identity_value,public_collaboration_url,public_business_email,status,match_status,created_at,updated_at)
+              VALUES (?,?,?,?,?,?,?,?,'ACTIVE',?,?,?)`).run(kolId, observation.host_name, observation.platform || null, observation.platform_handle || null, identity.basis, identity.value, observation.source_url, observation.public_email || null, identity.match_status, timestamp, timestamp);
+            stats.kols += 1;
+          } else {
+            this.db.prepare(`UPDATE kol_candidates SET display_name=?,platform=COALESCE(platform,?),handle=COALESCE(handle,?),public_collaboration_url=COALESCE(public_collaboration_url,?),updated_at=? WHERE kol_id=?`)
+              .run(observation.host_name, observation.platform || null, observation.platform_handle || null, observation.source_url, timestamp, kolId);
+          }
+        }
+
+        const eventId = deterministicGraphId("event", observation.observation_id);
+        const eventExists = this.db.prepare("SELECT event_id FROM group_buy_events WHERE observation_id=?").get(observation.observation_id);
+        if (!eventExists) {
+          this.db.prepare(`INSERT INTO group_buy_events(event_id,observation_id,product_id,vendor_id,kol_id,source_url,observed_at,starts_at,ends_at,event_status,price_amount,currency,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(eventId, observation.observation_id, productIdentity.product_id, vendorId, kolId, observation.source_url, observation.observed_at, observation.starts_at, observation.ends_at, observation.status, observation.price_amount, observation.currency, timestamp, timestamp);
+          stats.events += 1;
+        } else {
+          this.db.prepare(`UPDATE group_buy_events SET product_id=?,vendor_id=?,kol_id=?,starts_at=?,ends_at=?,event_status=?,price_amount=?,currency=?,updated_at=? WHERE observation_id=?`)
+            .run(productIdentity.product_id, vendorId, kolId, observation.starts_at, observation.ends_at, observation.status, observation.price_amount, observation.currency, timestamp, observation.observation_id);
+        }
+
+        if (kolId) {
+          const relationId = deterministicGraphId("relation", eventId);
+          const relation = this.db.prepare("SELECT relation_id FROM kol_product_relations WHERE event_id=?").get(eventId);
+          if (!relation) {
+            this.db.prepare(`INSERT INTO kol_product_relations(relation_id,kol_id,product_id,event_id,platform,handle,source_url,first_seen_at,last_seen_at,relation_status,created_at,updated_at)
+              VALUES (?,?,?,?,?,?,?,?,?,? ,?,?)`).run(relationId, kolId, productIdentity.product_id, eventId, observation.platform, observation.platform_handle, observation.source_url, observation.observed_at, observation.observed_at, observation.status, timestamp, timestamp);
+            stats.relations += 1;
+          } else {
+            this.db.prepare(`UPDATE kol_product_relations SET kol_id=?,product_id=?,last_seen_at=?,relation_status=?,updated_at=? WHERE event_id=?`)
+              .run(kolId, productIdentity.product_id, observation.observed_at, observation.status, timestamp, eventId);
+          }
+        }
+      }
+      const duplicateProductNames = this.db.prepare(`SELECT a.product_id AS product_a_id,b.product_id AS product_b_id
+        FROM product_candidates a JOIN product_candidates b ON a.normalized_key=b.normalized_key AND a.product_id<b.product_id
+        WHERE a.status='ACTIVE' AND b.status='ACTIVE' AND (a.identity_basis='OBSERVATION_SCOPED' OR b.identity_basis='OBSERVATION_SCOPED')`).all();
+      for (const pair of duplicateProductNames) {
+        const matchId = deterministicGraphId("pmatch", `${pair.product_a_id}:${pair.product_b_id}`);
+        const result = this.db.prepare(`INSERT OR IGNORE INTO product_match_candidates(product_match_id,product_a_id,product_b_id,confidence,reasons_json,status,created_at)
+          VALUES (?,?,?,0.55,?,'PENDING',?)`).run(matchId, pair.product_a_id, pair.product_b_id, toJson(["EXACT_NORMALIZED_NAME", "NAME_ONLY_REQUIRES_HUMAN_REVIEW"]), timestamp);
+        if (result.changes) stats.product_match_candidates += 1;
+      }
+      this.db.prepare(`UPDATE product_candidates AS p SET status='ARCHIVED',updated_at=?
+        WHERE status='ACTIVE' AND NOT EXISTS (
+          SELECT 1 FROM product_aliases a JOIN observations o ON o.observation_id=a.observation_id JOIN sources s ON s.source_id=o.source_id
+          WHERE a.product_id=p.product_id AND s.type<>'SYNTHETIC_DEMO'
+        )`).run(timestamp);
+      this.db.prepare(`UPDATE group_buy_events SET event_status='DEMO_EXCLUDED',updated_at=? WHERE observation_id IN (
+        SELECT o.observation_id FROM observations o JOIN sources s ON s.source_id=o.source_id WHERE s.type='SYNTHETIC_DEMO'
+      )`).run(timestamp);
+      this.audit({ actorRole: context.actorRole, action: "MARKET_GRAPH_REBUILT", entityType: "MARKET_GRAPH", entityId: MARKET_GRAPH_VERSION, after: stats, requestId: context.requestId });
+    });
+    return { version: MARKET_GRAPH_VERSION, processed_observations: observations.length, ...stats, totals: this.marketGraphMetrics() };
+  }
+
+  marketGraphMetrics() {
+    const count = table => this.db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get().count;
+    const activeProducts = this.db.prepare("SELECT COUNT(*) AS count FROM product_candidates WHERE status='ACTIVE'").get().count;
+    const activeProspects = this.db.prepare("SELECT COUNT(*) AS count FROM development_prospects WHERE stage NOT IN ('WON','LOST','DO_NOT_CONTACT')").get().count;
+    return {
+      products: activeProducts,
+      all_products: count("product_candidates"),
+      active_products: activeProducts,
+      events: this.db.prepare("SELECT COUNT(*) AS count FROM group_buy_events e JOIN product_candidates p ON p.product_id=e.product_id WHERE p.status='ACTIVE'").get().count,
+      vendors: this.db.prepare("SELECT COUNT(DISTINCT l.vendor_id) AS count FROM product_vendor_links l JOIN product_candidates p ON p.product_id=l.product_id WHERE p.status='ACTIVE'").get().count,
+      vendors_enriched: this.db.prepare("SELECT COUNT(*) AS count FROM vendor_candidates WHERE status IN ('PARTIAL','ENRICHED')").get().count,
+      kols: this.db.prepare("SELECT COUNT(DISTINCT r.kol_id) AS count FROM kol_product_relations r JOIN product_candidates p ON p.product_id=r.product_id WHERE p.status='ACTIVE'").get().count,
+      kol_product_relations: this.db.prepare("SELECT COUNT(*) AS count FROM kol_product_relations r JOIN product_candidates p ON p.product_id=r.product_id WHERE p.status='ACTIVE'").get().count,
+      product_matches_pending: this.db.prepare("SELECT COUNT(*) AS count FROM product_match_candidates WHERE status='PENDING'").get().count,
+      prospects: count("development_prospects"),
+      active_prospects: activeProspects,
+      pipeline_ready: activeProducts > 0 && count("group_buy_events") > 0 && count("kol_product_relations") > 0,
+    };
+  }
+
+  listProducts({ query = "", status = "ACTIVE", limit = 200 } = {}) {
+    const where = [];
+    const params = { limit: Math.max(1, Math.min(500, Number(limit) || 200)) };
+    if (query) { where.push("(p.canonical_name LIKE @query OR p.brand LIKE @query OR p.category LIKE @query)"); params.query = `%${query}%`; }
+    if (status) { where.push("p.status=@status"); params.status = status; }
+    const sqlWhere = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    return this.db.prepare(`SELECT p.*,
+      (SELECT COUNT(*) FROM group_buy_events e WHERE e.product_id=p.product_id) AS event_count,
+      (SELECT COUNT(DISTINCT r.kol_id) FROM kol_product_relations r WHERE r.product_id=p.product_id) AS kol_count,
+      (SELECT MIN(e.price_amount) FROM group_buy_events e WHERE e.product_id=p.product_id AND e.price_amount IS NOT NULL) AS min_price,
+      (SELECT MAX(e.price_amount) FROM group_buy_events e WHERE e.product_id=p.product_id AND e.price_amount IS NOT NULL) AS max_price,
+      (SELECT COUNT(*) FROM product_match_candidates m WHERE (m.product_a_id=p.product_id OR m.product_b_id=p.product_id) AND m.status='PENDING') AS pending_match_count,
+      (SELECT GROUP_CONCAT(DISTINCT COALESCE(v.display_name,'UNKNOWN')) FROM product_vendor_links l JOIN vendor_candidates v ON v.vendor_id=l.vendor_id WHERE l.product_id=p.product_id) AS vendor_names
+      FROM product_candidates p ${sqlWhere} ORDER BY p.updated_at DESC LIMIT @limit`).all(params).map(mapProduct);
+  }
+
+  getProduct(id) {
+    const product = mapProduct(this.db.prepare("SELECT * FROM product_candidates WHERE product_id=?").get(id));
+    if (!product) return null;
+    product.aliases = this.db.prepare("SELECT * FROM product_aliases WHERE product_id=? ORDER BY created_at").all(id);
+    product.events = this.db.prepare(`SELECT e.*,k.display_name AS kol_name,k.platform,k.handle,v.display_name AS vendor_name
+      FROM group_buy_events e LEFT JOIN kol_candidates k ON k.kol_id=e.kol_id LEFT JOIN vendor_candidates v ON v.vendor_id=e.vendor_id
+      WHERE e.product_id=? ORDER BY e.observed_at DESC`).all(id);
+    product.vendors = this.db.prepare(`SELECT v.*,l.evidence_url,l.confidence AS link_confidence,l.status AS link_status
+      FROM product_vendor_links l JOIN vendor_candidates v ON v.vendor_id=l.vendor_id WHERE l.product_id=?`).all(id).map(mapVendor);
+    product.kols = this.db.prepare(`SELECT k.*,COUNT(*) AS event_count,MIN(r.first_seen_at) AS first_seen_at,MAX(r.last_seen_at) AS last_seen_at
+      FROM kol_product_relations r JOIN kol_candidates k ON k.kol_id=r.kol_id WHERE r.product_id=? GROUP BY k.kol_id ORDER BY last_seen_at DESC`).all(id).map(mapKol);
+    product.match_candidates = this.db.prepare(`SELECT m.*,a.canonical_name AS product_a_name,b.canonical_name AS product_b_name
+      FROM product_match_candidates m JOIN product_candidates a ON a.product_id=m.product_a_id JOIN product_candidates b ON b.product_id=m.product_b_id
+      WHERE m.product_a_id=? OR m.product_b_id=? ORDER BY m.created_at DESC`).all(id, id).map(row => ({ ...row, reasons: fromJson(row.reasons_json, []) }));
+    return product;
+  }
+
+  reviewProductMatch(id, { action, actorRole, requestId } = {}) {
+    const decision = String(action || "").toUpperCase();
+    if (!["MERGE", "REJECT"].includes(decision)) throw Object.assign(new Error("不支援的商品比對決策"), { status: 400, code: "INVALID_PRODUCT_MATCH_ACTION" });
+    const match = this.db.prepare("SELECT * FROM product_match_candidates WHERE product_match_id=?").get(id);
+    if (!match) throw Object.assign(new Error("找不到商品比對候選"), { status: 404, code: "PRODUCT_MATCH_NOT_FOUND" });
+    if (match.status !== "PENDING") return { replayed: true, match };
+    const timestamp = nowIso();
+    this.transaction(() => {
+      if (decision === "MERGE") {
+        this.db.prepare("UPDATE product_aliases SET product_id=? WHERE product_id=?").run(match.product_a_id, match.product_b_id);
+        this.db.prepare("UPDATE group_buy_events SET product_id=?,updated_at=? WHERE product_id=?").run(match.product_a_id, timestamp, match.product_b_id);
+        this.db.prepare("UPDATE kol_product_relations SET product_id=?,updated_at=? WHERE product_id=?").run(match.product_a_id, timestamp, match.product_b_id);
+        this.db.prepare(`INSERT OR IGNORE INTO product_vendor_links(product_id,vendor_id,evidence_url,confidence,status,created_at)
+          SELECT ?,vendor_id,evidence_url,confidence,status,created_at FROM product_vendor_links WHERE product_id=?`).run(match.product_a_id, match.product_b_id);
+        this.db.prepare("DELETE FROM product_vendor_links WHERE product_id=?").run(match.product_b_id);
+        this.db.prepare("UPDATE product_candidates SET status='MERGED',merged_into_product_id=?,updated_at=? WHERE product_id=?").run(match.product_a_id, timestamp, match.product_b_id);
+      }
+      this.db.prepare("UPDATE product_match_candidates SET status=?,reviewed_by=?,reviewed_at=? WHERE product_match_id=?").run(decision === "MERGE" ? "APPROVED" : "REJECTED", actorRole, timestamp, id);
+      this.audit({ actorRole, action: `PRODUCT_MATCH_${decision}`, entityType: "PRODUCT_MATCH", entityId: id, before: match, after: { status: decision }, requestId });
+    });
+    return { replayed: false, match: this.db.prepare("SELECT * FROM product_match_candidates WHERE product_match_id=?").get(id), product: this.getProduct(match.product_a_id) };
+  }
+
+  splitProductAlias(aliasId, context = {}) {
+    const alias = this.db.prepare(`SELECT a.*,o.brand,o.category FROM product_aliases a JOIN observations o ON o.observation_id=a.observation_id WHERE a.alias_id=?`).get(aliasId);
+    if (!alias) throw Object.assign(new Error("找不到商品別名"), { status: 404, code: "PRODUCT_ALIAS_NOT_FOUND" });
+    const timestamp = nowIso();
+    const newProductId = deterministicGraphId("product", `MANUAL_SPLIT:${alias.alias_id}`);
+    if (alias.product_id === newProductId) return { replayed: true, product: this.getProduct(newProductId) };
+    this.transaction(() => {
+      this.db.prepare(`INSERT OR IGNORE INTO product_candidates(product_id,canonical_name,normalized_key,brand,category,normalized_specs_json,identity_basis,identity_value,status,merged_into_product_id,created_at,updated_at)
+        VALUES (?,?,?,?,?,'{}','MANUAL_SPLIT',?,'ACTIVE',NULL,?,?)`).run(newProductId, alias.alias_name, alias.normalized_key, alias.brand, alias.category, alias.alias_id, timestamp, timestamp);
+      this.db.prepare("UPDATE product_aliases SET product_id=?,match_basis='MANUAL_SPLIT',confidence=1 WHERE alias_id=?").run(newProductId, aliasId);
+      const event = this.db.prepare("SELECT event_id FROM group_buy_events WHERE observation_id=?").get(alias.observation_id);
+      if (event) {
+        this.db.prepare("UPDATE group_buy_events SET product_id=?,updated_at=? WHERE event_id=?").run(newProductId, timestamp, event.event_id);
+        this.db.prepare("UPDATE kol_product_relations SET product_id=?,updated_at=? WHERE event_id=?").run(newProductId, timestamp, event.event_id);
+      }
+      this.audit({ actorRole: context.actorRole, action: "PRODUCT_ALIAS_SPLIT", entityType: "PRODUCT_ALIAS", entityId: aliasId, before: { product_id: alias.product_id }, after: { product_id: newProductId }, requestId: context.requestId });
+    });
+    return { replayed: false, product: this.getProduct(newProductId) };
+  }
+
+  listVendors({ query = "", status = "", limit = 200 } = {}) {
+    const where = [];
+    const params = { limit: Math.max(1, Math.min(500, Number(limit) || 200)) };
+    if (query) { where.push("(v.display_name LIKE @query OR v.category LIKE @query OR v.public_business_email LIKE @query)"); params.query = `%${query}%`; }
+    if (status) { where.push("v.status=@status"); params.status = status; }
+    const sqlWhere = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    return this.db.prepare(`SELECT v.*,(SELECT COUNT(DISTINCT l.product_id) FROM product_vendor_links l WHERE l.vendor_id=v.vendor_id) AS product_count,
+      (SELECT COUNT(*) FROM vendor_evidence e WHERE e.vendor_id=v.vendor_id) AS evidence_count,
+      (SELECT prospect_id FROM development_prospects p WHERE p.vendor_id=v.vendor_id) AS prospect_id
+      FROM vendor_candidates v ${sqlWhere} ORDER BY v.updated_at DESC LIMIT @limit`).all(params).map(mapVendor);
+  }
+
+  getVendor(id) {
+    const vendor = mapVendor(this.db.prepare("SELECT * FROM vendor_candidates WHERE vendor_id=?").get(id));
+    if (!vendor) return null;
+    vendor.evidence = this.db.prepare("SELECT * FROM vendor_evidence WHERE vendor_id=? ORDER BY captured_at DESC").all(id);
+    vendor.products = this.db.prepare(`SELECT p.*,l.evidence_url,l.confidence AS link_confidence,l.status AS link_status FROM product_vendor_links l JOIN product_candidates p ON p.product_id=l.product_id WHERE l.vendor_id=?`).all(id).map(mapProduct);
+    vendor.prospect = mapProspect(this.db.prepare("SELECT * FROM development_prospects WHERE vendor_id=?").get(id));
+    return vendor;
+  }
+
+  enrichVendor(id, input, context = {}) {
+    const before = this.getVendor(id);
+    if (!before) throw Object.assign(new Error("找不到廠商候選"), { status: 404, code: "VENDOR_CANDIDATE_NOT_FOUND" });
+    const allowed = ["display_name", "website_url", "collaboration_url", "public_business_email", "category", "region"];
+    const updates = Object.fromEntries(allowed.filter(field => input[field] !== undefined).map(field => [field, input[field] || null]));
+    if (!Object.keys(updates).length) throw Object.assign(new Error("沒有可更新的公開廠商欄位"), { status: 400, code: "EMPTY_VENDOR_ENRICHMENT" });
+    if (!input.evidence_source_url) throw Object.assign(new Error("廠商補充必須提供公開證據 URL"), { status: 400, code: "VENDOR_EVIDENCE_REQUIRED" });
+    const timestamp = nowIso();
+    const merged = { ...before, ...updates };
+    const status = merged.display_name && (merged.website_url || merged.collaboration_url || merged.public_business_email) ? "ENRICHED" : merged.display_name ? "PARTIAL" : "NEEDS_ENRICHMENT";
+    this.transaction(() => {
+      this.db.prepare(`UPDATE vendor_candidates SET display_name=?,normalized_key=?,website_url=?,collaboration_url=?,public_business_email=?,category=?,region=?,status=?,updated_at=? WHERE vendor_id=?`)
+        .run(merged.display_name, normalizeKey(merged.display_name), merged.website_url, merged.collaboration_url, merged.public_business_email, merged.category, merged.region, status, timestamp, id);
+      for (const [field, value] of Object.entries(updates)) {
+        if (!value) continue;
+        const evidenceId = deterministicGraphId("vevd", `${id}:${field}:${value}:${input.evidence_source_url}`);
+        this.db.prepare(`INSERT OR IGNORE INTO vendor_evidence(vendor_evidence_id,vendor_id,observation_id,field,value,source_url,captured_at,confidence,parser_version)
+          VALUES (?,?,NULL,?,?,?,?,?,?)`).run(evidenceId, id, field, String(value), input.evidence_source_url, timestamp, Number(input.confidence || 0.9), input.parser_version || "manual-public-enrichment-1.0.0");
+      }
+      this.audit({ actorRole: context.actorRole, action: "VENDOR_PUBLIC_DATA_ENRICHED", entityType: "VENDOR_CANDIDATE", entityId: id, before, after: { ...updates, status, evidence_source_url: input.evidence_source_url }, requestId: context.requestId });
+    });
+    return this.getVendor(id);
+  }
+
+  listKols({ query = "", limit = 200 } = {}) {
+    const params = { limit: Math.max(1, Math.min(500, Number(limit) || 200)) };
+    let where = "";
+    if (query) { where = "WHERE k.display_name LIKE @query OR k.handle LIKE @query OR k.platform LIKE @query"; params.query = `%${query}%`; }
+    return this.db.prepare(`SELECT k.*,COUNT(DISTINCT r.product_id) AS product_count,COUNT(r.event_id) AS event_count,MAX(r.last_seen_at) AS last_seen_at
+      FROM kol_candidates k LEFT JOIN kol_product_relations r ON r.kol_id=k.kol_id ${where} GROUP BY k.kol_id ORDER BY last_seen_at DESC LIMIT @limit`).all(params).map(mapKol);
+  }
+
+  getKol(id) {
+    const kol = mapKol(this.db.prepare("SELECT * FROM kol_candidates WHERE kol_id=?").get(id));
+    if (!kol) return null;
+    kol.products = this.db.prepare(`SELECT p.*,COUNT(r.event_id) AS event_count,MIN(r.first_seen_at) AS first_seen_at,MAX(r.last_seen_at) AS last_seen_at
+      FROM kol_product_relations r JOIN product_candidates p ON p.product_id=r.product_id WHERE r.kol_id=? GROUP BY p.product_id ORDER BY last_seen_at DESC`).all(id).map(mapProduct);
+    kol.relations = this.db.prepare("SELECT * FROM kol_product_relations WHERE kol_id=? ORDER BY last_seen_at DESC").all(id);
+    return kol;
+  }
+
+  addProspect(vendorId, input = {}, context = {}) {
+    const vendor = this.getVendor(vendorId);
+    if (!vendor) throw Object.assign(new Error("找不到廠商候選"), { status: 404, code: "VENDOR_CANDIDATE_NOT_FOUND" });
+    if (!vendor.display_name) throw Object.assign(new Error("請先補充並確認廠商名稱，再加入開發名單"), { status: 409, code: "VENDOR_ENRICHMENT_REQUIRED" });
+    const existing = this.db.prepare("SELECT * FROM development_prospects WHERE vendor_id=?").get(vendorId);
+    if (existing) return { created: false, prospect: this.getProspect(existing.prospect_id) };
+    const timestamp = nowIso();
+    const ownerId = input.owner_id || null;
+    const stage = normalizeProspectStage(input.stage || (ownerId ? "ASSIGNED" : "PLANNED"));
+    const prospectId = deterministicGraphId("prospect", vendorId);
+    this.transaction(() => {
+      this.db.prepare(`INSERT INTO development_prospects(prospect_id,vendor_id,owner_id,priority,stage,next_action_at,created_by,metadata_json,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`).run(prospectId, vendorId, ownerId, normalizeProspectPriority(input.priority), stage, input.next_action_at || null, context.actorRole || "SYSTEM", toJson({ source: "VENDOR_CANDIDATE" }), timestamp, timestamp);
+      if (ownerId) this.db.prepare("INSERT INTO development_assignments VALUES (?,?,?,?,?,1)").run(newId("assign"), prospectId, ownerId, context.actorRole || "SYSTEM", timestamp);
+      this.db.prepare("INSERT INTO development_activities VALUES (?,?,?,?,?,?,?,?)").run(newId("activity"), prospectId, context.actorRole || "SYSTEM", input.actor_id || null, "PROSPECT_CREATED", input.note || null, toJson({ priority: normalizeProspectPriority(input.priority), owner_id: ownerId }), timestamp);
+      this.audit({ actorRole: context.actorRole, action: "DEVELOPMENT_PROSPECT_CREATED", entityType: "DEVELOPMENT_PROSPECT", entityId: prospectId, after: { vendor_id: vendorId, owner_id: ownerId, stage }, requestId: context.requestId });
+    });
+    return { created: true, prospect: this.getProspect(prospectId) };
+  }
+
+  listProspects({ ownerId = "", stage = "", query = "" } = {}) {
+    const where = [];
+    const params = {};
+    if (ownerId) { where.push("p.owner_id=@ownerId"); params.ownerId = ownerId; }
+    if (stage) { where.push("p.stage=@stage"); params.stage = normalizeProspectStage(stage); }
+    if (query) { where.push("(v.display_name LIKE @query OR p.owner_id LIKE @query)"); params.query = `%${query}%`; }
+    const sqlWhere = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    return this.db.prepare(`SELECT p.*,v.display_name AS vendor_name,v.category,v.website_url,v.public_business_email,
+      (SELECT COUNT(*) FROM development_activities a WHERE a.prospect_id=p.prospect_id) AS activity_count
+      FROM development_prospects p JOIN vendor_candidates v ON v.vendor_id=p.vendor_id ${sqlWhere}
+      ORDER BY CASE p.priority WHEN 'URGENT' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 ELSE 4 END,p.next_action_at IS NULL,p.next_action_at,p.updated_at DESC`).all(params).map(mapProspect);
+  }
+
+  getProspect(id) {
+    const prospect = mapProspect(this.db.prepare(`SELECT p.*,v.display_name AS vendor_name,v.category,v.website_url,v.collaboration_url,v.public_business_email
+      FROM development_prospects p JOIN vendor_candidates v ON v.vendor_id=p.vendor_id WHERE p.prospect_id=?`).get(id));
+    if (!prospect) return null;
+    prospect.assignments = this.db.prepare("SELECT * FROM development_assignments WHERE prospect_id=? ORDER BY assigned_at DESC").all(id).map(row => ({ ...row, active: Boolean(row.active) }));
+    prospect.activities = this.db.prepare("SELECT * FROM development_activities WHERE prospect_id=? ORDER BY created_at DESC").all(id).map(row => ({ ...row, metadata: fromJson(row.metadata_json, {}) }));
+    return prospect;
+  }
+
+  updateProspect(id, input = {}, context = {}) {
+    const before = this.getProspect(id);
+    if (!before) throw Object.assign(new Error("找不到預計開發項目"), { status: 404, code: "PROSPECT_NOT_FOUND" });
+    const stage = input.stage ? assertProspectTransition(before.stage, input.stage) : before.stage;
+    const priority = input.priority ? normalizeProspectPriority(input.priority) : before.priority;
+    const ownerId = input.owner_id !== undefined ? input.owner_id || null : before.owner_id;
+    const nextActionAt = input.next_action_at !== undefined ? input.next_action_at || null : before.next_action_at;
+    const timestamp = nowIso();
+    this.transaction(() => {
+      this.db.prepare("UPDATE development_prospects SET owner_id=?,priority=?,stage=?,next_action_at=?,updated_at=? WHERE prospect_id=?").run(ownerId, priority, stage, nextActionAt, timestamp, id);
+      if (ownerId !== before.owner_id) {
+        this.db.prepare("UPDATE development_assignments SET active=0 WHERE prospect_id=? AND active=1").run(id);
+        if (ownerId) this.db.prepare("INSERT INTO development_assignments VALUES (?,?,?,?,?,1)").run(newId("assign"), id, ownerId, context.actorRole || "SYSTEM", timestamp);
+      }
+      this.db.prepare("INSERT INTO development_activities VALUES (?,?,?,?,?,?,?,?)").run(newId("activity"), id, context.actorRole || "SYSTEM", input.actor_id || null, "PROSPECT_UPDATED", input.note || null, toJson({ before: { owner_id: before.owner_id, priority: before.priority, stage: before.stage, next_action_at: before.next_action_at }, after: { owner_id: ownerId, priority, stage, next_action_at: nextActionAt } }), timestamp);
+      this.audit({ actorRole: context.actorRole, action: "DEVELOPMENT_PROSPECT_UPDATED", entityType: "DEVELOPMENT_PROSPECT", entityId: id, before, after: { owner_id: ownerId, priority, stage, next_action_at: nextActionAt }, requestId: context.requestId });
+    });
+    return this.getProspect(id);
+  }
+
+  addProspectActivity(id, input = {}, context = {}) {
+    const prospect = this.getProspect(id);
+    if (!prospect) throw Object.assign(new Error("找不到預計開發項目"), { status: 404, code: "PROSPECT_NOT_FOUND" });
+    if (!input.note) throw Object.assign(new Error("活動紀錄必須包含備註"), { status: 400, code: "ACTIVITY_NOTE_REQUIRED" });
+    const row = { activity_id: newId("activity"), prospect_id: id, actor_role: context.actorRole || "SYSTEM", actor_id: input.actor_id || null, action_type: String(input.action_type || "NOTE").toUpperCase(), note: input.note, metadata_json: toJson(input.metadata || {}), created_at: nowIso() };
+    this.transaction(() => {
+      this.db.prepare("INSERT INTO development_activities VALUES (@activity_id,@prospect_id,@actor_role,@actor_id,@action_type,@note,@metadata_json,@created_at)").run(row);
+      this.db.prepare("UPDATE development_prospects SET updated_at=? WHERE prospect_id=?").run(row.created_at, id);
+      this.audit({ actorRole: context.actorRole, action: "DEVELOPMENT_ACTIVITY_ADDED", entityType: "DEVELOPMENT_PROSPECT", entityId: id, after: { action_type: row.action_type, note: row.note }, requestId: context.requestId });
+    });
+    return { ...row, metadata: fromJson(row.metadata_json, {}) };
+  }
+
+  pipelineSummary() {
+    const stages = Object.fromEntries(this.db.prepare("SELECT stage,COUNT(*) AS count FROM development_prospects GROUP BY stage").all().map(row => [row.stage, row.count]));
+    const owners = this.db.prepare("SELECT COALESCE(owner_id,'UNASSIGNED') AS owner_id,COUNT(*) AS count FROM development_prospects GROUP BY COALESCE(owner_id,'UNASSIGNED') ORDER BY count DESC").all();
+    return { total: this.db.prepare("SELECT COUNT(*) AS count FROM development_prospects").get().count, stages, owners };
+  }
+
   rebuildLeads(context = {}) {
     const observations = this.listObservations({ pageSize: 10_000 }).items;
     const evidenceCounts = new Map(this.db.prepare("SELECT observation_id, COUNT(*) AS count FROM evidence GROUP BY observation_id").all().map(row => [row.observation_id, row.count]));
@@ -718,6 +1278,7 @@ export class RadarDatabase {
     const healthy = scalar("SELECT COUNT(*) AS count FROM sources WHERE active = 1 AND health_status = 'HEALTHY'");
     const discovery = this.discoveryFeed();
     const metrics = this.discoveryMetrics();
+    const graph = this.marketGraphMetrics();
     return {
       observations: scalar("SELECT COUNT(*) AS count FROM observations"),
       vendor_leads: scalar("SELECT COUNT(*) AS count FROM leads WHERE lead_type = 'VENDOR'"),
@@ -732,17 +1293,26 @@ export class RadarDatabase {
       upcoming_events: discovery.summary.upcoming,
       ending_soon_events: discovery.summary.ending_soon,
       needs_review_events: discovery.summary.needs_review,
+      product_candidates: graph.active_products,
+      vendor_candidates: graph.vendors,
+      enriched_vendors: graph.vendors_enriched,
+      kol_candidates: graph.kols,
+      kol_product_relations: graph.kol_product_relations,
+      development_prospects: graph.prospects,
+      active_prospects: graph.active_prospects,
+      product_matches_pending: graph.product_matches_pending,
     };
   }
 
   seedDemo(context = { actorRole: "SYSTEM" }) {
     if (this.db.prepare("SELECT COUNT(*) AS count FROM observations").get().count) return { seeded: false };
+    const demoSource = this.createSource({ source_id: "src_demo_synthetic", name: "公開展示合成資料", type: "SYNTHETIC_DEMO", base_url: "https://example.com/", policy_status: "DEMO_ONLY", health_status: "HEALTHY", active: false }, context).source;
     const samples = [
       { entity_type: "PRODUCT", title: "輕量氣炸鍋 4.5L", product_name: "輕量氣炸鍋 4.5L", vendor_name: "森活家電（示範）", host_name: "好物研究室", category: "生活家電", platform: "公開團購頁", platform_handle: "good-life-lab", public_email: "partner@example.com", source_url: "https://example.com/groups/air-fryer", price_amount: 2990 },
       { entity_type: "VENDOR", title: "晨光食品（示範）", vendor_name: "晨光食品（示範）", host_name: "吃貨小週末", category: "食品飲料", source_url: "https://example.org/brands/morning-food", public_email: "sales@example.org" },
       { entity_type: "KOL", title: "親子慢生活", host_name: "親子慢生活", vendor_name: "沐光日用（示範）", category: "親子用品", platform: "公開合作頁", platform_handle: "slow-family", source_url: "https://example.net/creators/slow-family" },
     ];
-    const results = samples.map(sample => this.createObservation(sample, context));
+    const results = samples.map(sample => this.createObservation({ ...sample, source_id: demoSource.source_id }, context));
     const leads = this.rebuildLeads(context);
     return { seeded: true, observations: results.length, leads };
   }

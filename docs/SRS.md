@@ -1,7 +1,7 @@
-# 團購市場情報與開發雷達 SRS v0.4
+# 團購市場情報與開發雷達 SRS v0.9
 
-狀態：MVP Rebaselined／Discovery Foundation Implemented／完整 MVP 尚未完成
-日期：2026-11-04
+狀態：M6 Pipeline Ready／M7～M8 尚未完成
+日期：2026-11-05
 
 ## 1. 目的與邊界
 
@@ -171,14 +171,14 @@ KOL 評分（100 分）：近期開團活躍度 30、品類契合 20、公開合
 | 正式 ERP 與既有 repo 未被寫入 | Done | 無 ERP write endpoint；fixture only |
 | 公開來源治理與安全 Collector runtime | Done | policy／terms／robots／DNS／SSRF／Run contract tests |
 | 真實發現至少 30 筆公開開團事件 | Done | 2 個來源、151 筆事件；30／30 人工抽樣正確 |
-| 同商品彙整多位開團 KOL | Not Started | Product／GroupBuyEvent／Relation UAT |
-| 商品可追到有 Evidence 的廠商資料 | Not Started | Vendor enrichment UAT |
-| 可加入、指派與追蹤預計開發名單 | Not Started | Development pipeline UAT |
+| 同商品彙整多位開團 KOL | Done | Product／GroupBuyEvent／Relation API UAT；151 筆真實 relation |
+| 商品可追到有 Evidence 的廠商資料 | Done | VendorCandidate + field-level enrichment Evidence UAT |
+| 可加入、指派與追蹤預計開發名單 | Done | Development Pipeline RBAC／冪等／Activity／Audit UAT |
 
 ## 8. 實作狀態與下一步
 
-- Milestone 2 已完成：兩個公開來源、兩種專用 Adapter、151 筆真實事件、Discovery Feed、Run metadata 與 Gate B UAT。
-- 完整 MVP 尚未完成：Product／GroupBuyEvent 去重彙整、Vendor enrichment、KOL relations 與 Development Pipeline。
-- 下一步依 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 的 Milestone 3～8 執行。
+- Milestone 2～6 已完成：151 筆真實事件、商品去重／人工 merge／split、VendorCandidate 與公開 Evidence、KOL relations、Development Pipeline。
+- 現況為 `M6_PIPELINE_READY`，不是 `MVP_COMPLETE`；真實廠商公開資料與 Prospect 由使用者逐筆補充／加入，不以合成值冒充。
+- 下一步依 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 的 Milestone 7～8 執行受控部署、正式身份、排程／備份／監控與完整端到端 UAT。
 - 正式化：SSO、後端身份映射、受管資料庫、備份、監控、正式 ERP 唯讀 adapter 與 contract test。
 - 不在本 MVP：Owner 核准後的受控 ERP 寫入；必須另案風險審核與核准。

@@ -2,13 +2,20 @@
 
 日期：2026-11-05
 
-> 本文件證明 Foundation、M1 與 M2 真實市場發現通過，不代表完整 MVP 通過。商品跨來源去重、Vendor enrichment、商品－KOL 關聯與預計開發名單尚未完成。
+> 本文件證明 Foundation 與 M1～M6 通過，現況是 `M6_PIPELINE_READY`，不代表 M7 受控部署與 M8 完整 MVP UAT 已通過。
 
 ## 自動驗證
 
 - `npm run check`：syntax check 通過。
-- Node test runner：25 tests、25 pass、0 fail（最終數量以 CI 為準）。
-- 覆蓋：RBAC、公開唯讀、來源治理、robots、DNS／SSRF、公開頁 JSON-LD 解析、URL／私有網段防護、正規化、fingerprint、CSV、同名不合併、UNKNOWN 評分、Collector Run 冪等、稽核、Dry-run、禁止 hard delete。
+- Node test runner：29 tests、29 pass、0 fail。
+- 覆蓋：RBAC、公開唯讀、來源治理、robots、DNS／SSRF、公開頁 JSON-LD 解析、URL／私有網段防護、正規化、fingerprint、CSV、同名人工候選、商品 merge／split、廠商逐欄 Evidence、商品－KOL 關聯、開發名單冪等／指派／階段／Activity／Audit、UNKNOWN 評分、Dry-run、禁止 hard delete。
+
+## M3～M6 本機資料驗證
+
+- `npm run m6:rebuild`：處理 151 筆非合成 Observation。
+- 151 個 ProductCandidate、151 個 GroupBuyEvent、151 個 VendorCandidate、10 個 KolCandidate、151 筆 KolProductRelation。
+- 3 組同名 match candidate 保持人工確認；系統沒有只靠名稱自動合併。
+- 目前真實來源沒有足夠公開廠商資料，因此 0 個 enriched vendor、0 個 DevelopmentProspect；這是誠實缺值，不是功能失敗。API UAT 已驗證補充 Evidence、加入 Prospect、主管指派與活動紀錄。
 
 ## 瀏覽器驗證
 

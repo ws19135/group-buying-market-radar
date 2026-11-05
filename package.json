@@ -1,6 +1,6 @@
 {
   "name": "group-buying-market-radar",
-  "version": "0.6.0",
+  "version": "0.9.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "start": "node server.mjs",
     "dev": "node server.mjs",
     "m2:collect": "node scripts/run-m2-uat.mjs",
-    "check": "node --check server.mjs && node --check app.js && node --check role-experience.js && node --check src/domain.mjs && node --check src/database.mjs && node --check src/collector.mjs && npm test"
+    "m6:rebuild": "node scripts/rebuild-m6.mjs",
+    "check": "node --check server.mjs && node --check app.js && node --check role-experience.js && node --check src/domain.mjs && node --check src/database.mjs && node --check src/collector.mjs && node --check src/market-graph.mjs && npm test"
   }
 }

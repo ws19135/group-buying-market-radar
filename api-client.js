@@ -56,11 +56,23 @@ export class RadarApi {
   reviews() { return this.request("/reviews"); }
   promotions() { return this.request("/promotion-drafts"); }
   runs() { return this.request("/runs"); }
+  products(query = "") { return this.request(`/products?limit=500${query ? `&query=${encodeURIComponent(query)}` : ""}`); }
+  product(id) { return this.request(`/products/${encodeURIComponent(id)}`); }
+  vendorCandidates(query = "") { return this.request(`/vendor-candidates?limit=500${query ? `&query=${encodeURIComponent(query)}` : ""}`); }
+  kolCandidates(query = "") { return this.request(`/kol-candidates?limit=500${query ? `&query=${encodeURIComponent(query)}` : ""}`); }
+  prospects() { return this.request("/prospects"); }
   createObservation(body) { return this.request("/observations", { method: "POST", body }); }
   importRecords(body) { return this.request("/imports", { method: "POST", body }); }
   createSource(body) { return this.request("/sources", { method: "POST", body }); }
   collectSource(id, body = {}) { return this.request(`/sources/${encodeURIComponent(id)}/collect`, { method: "POST", body }); }
   rebuildLeads() { return this.request("/leads/rebuild", { method: "POST", body: {} }); }
+  rebuildMarketGraph() { return this.request("/market-graph/rebuild", { method: "POST", body: {} }); }
+  reviewProductMatch(id, action) { return this.request(`/product-matches/${encodeURIComponent(id)}/review`, { method: "POST", body: { action } }); }
+  splitProductAlias(id) { return this.request(`/product-aliases/${encodeURIComponent(id)}/split`, { method: "POST", body: {} }); }
+  enrichVendor(id, body) { return this.request(`/vendor-candidates/${encodeURIComponent(id)}/enrichment`, { method: "PATCH", body }); }
+  createProspect(vendorId, body = {}) { return this.request(`/vendor-candidates/${encodeURIComponent(vendorId)}/prospects`, { method: "POST", body }); }
+  updateProspect(id, body) { return this.request(`/prospects/${encodeURIComponent(id)}`, { method: "PATCH", body }); }
+  addProspectActivity(id, body) { return this.request(`/prospects/${encodeURIComponent(id)}/activities`, { method: "POST", body }); }
   reviewLead(id, body) { return this.request(`/leads/${encodeURIComponent(id)}/review`, { method: "POST", body }); }
   createPromotion(id) { return this.request(`/leads/${encodeURIComponent(id)}/promotion-drafts`, { method: "POST", body: {} }); }
   dryRun(id) { return this.request(`/promotion-drafts/${encodeURIComponent(id)}/dry-run`, { method: "POST", body: {} }); }

@@ -24,9 +24,9 @@ const MIME = {
 };
 
 const CAPABILITIES = {
-  SYSTEM_ADMIN: new Set(["view", "review", "approve", "source_admin", "integration_dry_run"]),
-  OPS_MANAGER: new Set(["view", "review", "approve", "integration_dry_run"]),
-  OPS_EDITOR: new Set(["view", "review"]),
+  SYSTEM_ADMIN: new Set(["view", "review", "approve", "source_admin", "integration_dry_run", "product_review", "vendor_enrich", "pipeline_view", "prospect_create", "prospect_manage"]),
+  OPS_MANAGER: new Set(["view", "review", "approve", "integration_dry_run", "product_review", "vendor_enrich", "pipeline_view", "prospect_create", "prospect_manage"]),
+  OPS_EDITOR: new Set(["view", "review", "vendor_enrich", "pipeline_view", "prospect_create"]),
   FINANCE: new Set(["view"]),
   VENDOR: new Set(["view"]),
   HOST: new Set(["view"]),
@@ -88,6 +88,7 @@ export function createRadarServer({
   if (seedDemo) {
     database.seedDemo();
     database.seedApprovedSources(M2_APPROVED_SOURCES);
+    database.rebuildMarketGraph({ actorRole: "SYSTEM", requestId: "startup-market-graph" });
   }
 
   const server = createServer(async (request, response) => {
@@ -103,7 +104,9 @@ export function createRadarServer({
         if (request.method === "GET" && url.pathname === "/api/v1/health") {
           const liveCollectors = database.liveCollectorCount();
           const discovery = database.discoveryMetrics();
-          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", mvp_status: discovery.gate_b_data_volume_passed ? "M2_DISCOVERY_VALIDATED" : "M2_DISCOVERY_READY", collector_runtime_available: true, real_market_discovery_enabled: liveCollectors > 0, live_collectors: liveCollectors, real_market_events: discovery.real_market_events, successful_discovery_sources: discovery.successful_sources, gate_b_data_volume_passed: discovery.gate_b_data_volume_passed, write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
+          const graph = database.marketGraphMetrics();
+          const mvpStatus = graph.pipeline_ready ? "M6_PIPELINE_READY" : discovery.gate_b_data_volume_passed ? "M2_DISCOVERY_VALIDATED" : "M2_DISCOVERY_READY";
+          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", mvp_status: mvpStatus, collector_runtime_available: true, real_market_discovery_enabled: liveCollectors > 0, live_collectors: liveCollectors, real_market_events: discovery.real_market_events, successful_discovery_sources: discovery.successful_sources, gate_b_data_volume_passed: discovery.gate_b_data_volume_passed, market_graph: graph, m6_pipeline_ready: graph.pipeline_ready, write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
         }
         if (request.method === "GET" && url.pathname === "/api/v1/dashboard") {
           requireCapability(context, "view");
@@ -149,8 +152,9 @@ export function createRadarServer({
               },
               ...context,
             });
+            const graph = database.rebuildMarketGraph(context);
             const updatedSource = database.markCollectionSuccess(sourceId, { robotsStatus: result.robots_status, robotsCheckedAt: result.robots_checked_at }, context);
-            return sendJson(response, 201, { ...imported, source: updatedSource, collector: { parser_version: result.parser_version, fetched_url: result.fetched_url, emitted_count: result.records.length } }, requestId);
+            return sendJson(response, 201, { ...imported, graph, source: updatedSource, collector: { parser_version: result.parser_version, fetched_url: result.fetched_url, emitted_count: result.records.length } }, requestId);
           } catch (error) {
             database.markCollectionFailure(sourceId, error, context);
             database.recordCollectionFailure(sourceId, {
@@ -172,7 +176,9 @@ export function createRadarServer({
         if (request.method === "POST" && url.pathname === "/api/v1/observations") {
           requireCapability(context, "review");
           const body = await readJson(request);
-          return sendJson(response, 201, database.createObservation(body, context), requestId);
+          const result = database.createObservation(body, context);
+          const graph = database.rebuildMarketGraph(context);
+          return sendJson(response, 201, { ...result, graph }, requestId);
         }
         const observationMatch = url.pathname.match(/^\/api\/v1\/observations\/([^/]+)$/);
         if (request.method === "GET" && observationMatch) {
@@ -185,11 +191,105 @@ export function createRadarServer({
           requireCapability(context, "review");
           const body = await readJson(request);
           const records = parseImportPayload(String(body.format || "json").toLowerCase(), body.payload ?? body.records);
-          return sendJson(response, 201, database.importObservations(records, { sourceId: body.source_id, idempotencyKey: body.idempotency_key, ...context }), requestId);
+          const result = database.importObservations(records, { sourceId: body.source_id, idempotencyKey: body.idempotency_key, ...context });
+          const graph = database.rebuildMarketGraph(context);
+          return sendJson(response, 201, { ...result, graph }, requestId);
         }
         if (request.method === "GET" && url.pathname === "/api/v1/runs") {
           requireCapability(context, "view");
           return sendJson(response, 200, { items: database.listRuns() }, requestId);
+        }
+        if (request.method === "POST" && url.pathname === "/api/v1/market-graph/rebuild") {
+          requireCapability(context, "review");
+          return sendJson(response, 200, database.rebuildMarketGraph(context), requestId);
+        }
+        if (request.method === "GET" && url.pathname === "/api/v1/products") {
+          requireCapability(context, "view");
+          return sendJson(response, 200, { items: database.listProducts({ query: url.searchParams.get("query") || "", status: url.searchParams.get("status") ?? "ACTIVE", limit: url.searchParams.get("limit") || 200 }), metrics: database.marketGraphMetrics() }, requestId);
+        }
+        const productMatchReview = url.pathname.match(/^\/api\/v1\/product-matches\/([^/]+)\/review$/);
+        if (request.method === "POST" && productMatchReview) {
+          requireCapability(context, "product_review");
+          const body = await readJson(request);
+          return sendJson(response, 200, database.reviewProductMatch(decodeURIComponent(productMatchReview[1]), { action: body.action, ...context }), requestId);
+        }
+        const aliasSplit = url.pathname.match(/^\/api\/v1\/product-aliases\/([^/]+)\/split$/);
+        if (request.method === "POST" && aliasSplit) {
+          requireCapability(context, "product_review");
+          return sendJson(response, 200, database.splitProductAlias(decodeURIComponent(aliasSplit[1]), context), requestId);
+        }
+        const productDetail = url.pathname.match(/^\/api\/v1\/products\/([^/]+)$/);
+        if (request.method === "GET" && productDetail) {
+          requireCapability(context, "view");
+          const product = database.getProduct(decodeURIComponent(productDetail[1]));
+          if (!product) throw Object.assign(new Error("找不到商品候選"), { status: 404, code: "PRODUCT_CANDIDATE_NOT_FOUND" });
+          return sendJson(response, 200, product, requestId);
+        }
+        if (request.method === "GET" && url.pathname === "/api/v1/vendor-candidates") {
+          requireCapability(context, "view");
+          return sendJson(response, 200, { items: database.listVendors({ query: url.searchParams.get("query") || "", status: url.searchParams.get("status") || "", limit: url.searchParams.get("limit") || 200 }) }, requestId);
+        }
+        const vendorEnrichment = url.pathname.match(/^\/api\/v1\/vendor-candidates\/([^/]+)\/enrichment$/);
+        if (request.method === "PATCH" && vendorEnrichment) {
+          requireCapability(context, "vendor_enrich");
+          const body = await readJson(request);
+          for (const field of ["website_url", "collaboration_url", "evidence_source_url"]) {
+            if (!body[field]) continue;
+            const validation = validatePublicUrl(body[field]);
+            if (!validation.ok) throw Object.assign(new Error(`${field}：${validation.reason}`), { status: 400, code: validation.code });
+            body[field] = validation.normalizedUrl;
+          }
+          return sendJson(response, 200, database.enrichVendor(decodeURIComponent(vendorEnrichment[1]), body, context), requestId);
+        }
+        const vendorProspect = url.pathname.match(/^\/api\/v1\/vendor-candidates\/([^/]+)\/prospects$/);
+        if (request.method === "POST" && vendorProspect) {
+          requireCapability(context, "prospect_create");
+          const body = await readJson(request);
+          if (!CAPABILITIES[context.actorRole].has("prospect_manage")) {
+            delete body.owner_id;
+            delete body.stage;
+          }
+          return sendJson(response, 201, database.addProspect(decodeURIComponent(vendorProspect[1]), body, context), requestId);
+        }
+        const vendorDetail = url.pathname.match(/^\/api\/v1\/vendor-candidates\/([^/]+)$/);
+        if (request.method === "GET" && vendorDetail) {
+          requireCapability(context, "view");
+          const vendor = database.getVendor(decodeURIComponent(vendorDetail[1]));
+          if (!vendor) throw Object.assign(new Error("找不到廠商候選"), { status: 404, code: "VENDOR_CANDIDATE_NOT_FOUND" });
+          return sendJson(response, 200, vendor, requestId);
+        }
+        if (request.method === "GET" && url.pathname === "/api/v1/kol-candidates") {
+          requireCapability(context, "view");
+          return sendJson(response, 200, { items: database.listKols({ query: url.searchParams.get("query") || "", limit: url.searchParams.get("limit") || 200 }) }, requestId);
+        }
+        const kolDetail = url.pathname.match(/^\/api\/v1\/kol-candidates\/([^/]+)$/);
+        if (request.method === "GET" && kolDetail) {
+          requireCapability(context, "view");
+          const kol = database.getKol(decodeURIComponent(kolDetail[1]));
+          if (!kol) throw Object.assign(new Error("找不到 KOL 候選"), { status: 404, code: "KOL_CANDIDATE_NOT_FOUND" });
+          return sendJson(response, 200, kol, requestId);
+        }
+        if (request.method === "GET" && url.pathname === "/api/v1/prospects") {
+          requireCapability(context, "pipeline_view");
+          return sendJson(response, 200, { items: database.listProspects({ ownerId: url.searchParams.get("owner_id") || "", stage: url.searchParams.get("stage") || "", query: url.searchParams.get("query") || "" }), summary: database.pipelineSummary() }, requestId);
+        }
+        const prospectActivity = url.pathname.match(/^\/api\/v1\/prospects\/([^/]+)\/activities$/);
+        if (request.method === "POST" && prospectActivity) {
+          requireCapability(context, "prospect_create");
+          const body = await readJson(request);
+          return sendJson(response, 201, database.addProspectActivity(decodeURIComponent(prospectActivity[1]), body, context), requestId);
+        }
+        const prospectDetail = url.pathname.match(/^\/api\/v1\/prospects\/([^/]+)$/);
+        if (request.method === "GET" && prospectDetail) {
+          requireCapability(context, "pipeline_view");
+          const prospect = database.getProspect(decodeURIComponent(prospectDetail[1]));
+          if (!prospect) throw Object.assign(new Error("找不到預計開發項目"), { status: 404, code: "PROSPECT_NOT_FOUND" });
+          return sendJson(response, 200, prospect, requestId);
+        }
+        if (request.method === "PATCH" && prospectDetail) {
+          requireCapability(context, "prospect_manage");
+          const body = await readJson(request);
+          return sendJson(response, 200, database.updateProspect(decodeURIComponent(prospectDetail[1]), body, context), requestId);
         }
         if (request.method === "POST" && url.pathname === "/api/v1/leads/rebuild") {
           requireCapability(context, "review");

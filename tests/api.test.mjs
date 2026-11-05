@@ -171,3 +171,85 @@ test("API exposes no hard-delete route", async () => withServer(async ({ base })
   const result = await api(base, "/api/v1/observations/anything", { method: "DELETE", role: "SYSTEM_ADMIN" });
   assert.equal(result.status, 404);
 }));
+
+test("M3 to M6 flow aggregates products and KOLs, enriches vendors and assigns prospects", async () => withServer(async ({ base }) => {
+  const sourceResult = await api(base, "/api/v1/sources", { method: "POST", role: "SYSTEM_ADMIN", body: {
+    name: "公開團購測試頁", type: "MANUAL_URL", base_url: "https://market.example/", policy_status: "APPROVED"
+  } });
+  const sourceId = sourceResult.payload.source.source_id;
+  const records = [
+    { source_url: "https://market.example/a", entity_type: "CAMPAIGN", title: "山海燕麥脆片", product_name: "山海燕麥脆片 6 入", brand: "山海", vendor_name: "山海食品", public_email: "sales@mountain.example", host_name: "好物研究室", platform: "Instagram", platform_handle: "good.lab", starts_at: "2026-11-05T00:00:00.000Z", status: "ACTIVE_OR_RECENT" },
+    { source_url: "https://market.example/b", entity_type: "CAMPAIGN", title: "山海燕麥脆片", product_name: "山海燕麥脆片 6 入", brand: "山海", vendor_name: "山海食品", public_email: "sales@mountain.example", host_name: "親子慢生活", platform: "Instagram", platform_handle: "slow.family", starts_at: "2026-11-06T00:00:00.000Z", status: "UPCOMING" },
+    { source_url: "https://market.example/c", entity_type: "CAMPAIGN", title: "山海燕麥脆片", product_name: "山海燕麥脆片 6 入", vendor_name: "山海食品", public_email: "sales@mountain.example", host_name: "團購媽媽", platform: "Instagram", platform_handle: "group.mom", starts_at: "2026-11-07T00:00:00.000Z", status: "UPCOMING" },
+  ];
+  const imported = await api(base, "/api/v1/imports", { method: "POST", role: "OPS_EDITOR", body: { format: "json", records, source_id: sourceId, idempotency_key: "m3-m6-flow" } });
+  assert.equal(imported.status, 201);
+  assert.equal(imported.payload.graph.processed_observations, 3);
+
+  const products = await api(base, "/api/v1/products");
+  assert.equal(products.status, 200);
+  assert.equal(products.payload.items.length, 2);
+  const stableProduct = products.payload.items.find(item => item.identity_basis === "BRAND_AND_EXACT_PRODUCT");
+  assert.equal(stableProduct.event_count, 2);
+  assert.equal(stableProduct.kol_count, 2);
+  const stableDetail = await api(base, `/api/v1/products/${stableProduct.product_id}`);
+  assert.equal(stableDetail.payload.kols.length, 2);
+  assert.equal(stableDetail.payload.events.every(item => item.source_url.startsWith("https://market.example/")), true);
+
+  const nameOnlyProduct = products.payload.items.find(item => item.identity_basis === "OBSERVATION_SCOPED");
+  const nameOnlyDetail = await api(base, `/api/v1/products/${nameOnlyProduct.product_id}`);
+  assert.equal(nameOnlyDetail.payload.match_candidates.length, 1);
+  const matchId = nameOnlyDetail.payload.match_candidates[0].product_match_id;
+  const merged = await api(base, `/api/v1/product-matches/${matchId}/review`, { method: "POST", role: "OPS_MANAGER", body: { action: "MERGE" } });
+  assert.equal(merged.status, 200);
+  assert.equal(merged.payload.match.status, "APPROVED");
+  const activeProducts = await api(base, "/api/v1/products");
+  assert.equal(activeProducts.payload.items.length, 1);
+  assert.equal(activeProducts.payload.items[0].event_count, 3);
+  assert.equal(activeProducts.payload.items[0].kol_count, 3);
+
+  const mergedDetail = await api(base, `/api/v1/products/${merged.payload.product.product_id}`);
+  const scopedAlias = mergedDetail.payload.aliases.find(item => item.match_basis === "OBSERVATION_SCOPED");
+  assert.ok(scopedAlias);
+  const split = await api(base, `/api/v1/product-aliases/${scopedAlias.alias_id}/split`, { method: "POST", role: "OPS_MANAGER", body: {} });
+  assert.equal(split.status, 200);
+  assert.notEqual(split.payload.product.product_id, merged.payload.product.product_id);
+  const splitProducts = await api(base, "/api/v1/products");
+  assert.equal(splitProducts.payload.items.length, 2);
+
+  const vendors = await api(base, "/api/v1/vendor-candidates");
+  const vendor = vendors.payload.items.find(item => item.display_name === "山海食品");
+  assert.ok(vendor);
+  const enriched = await api(base, `/api/v1/vendor-candidates/${vendor.vendor_id}/enrichment`, { method: "PATCH", role: "OPS_EDITOR", body: {
+    display_name: "山海食品", website_url: "https://brand.example/", collaboration_url: "https://brand.example/partners", public_business_email: "sales@mountain.example", region: "台灣", evidence_source_url: "https://brand.example/about", confidence: 0.98
+  } });
+  assert.equal(enriched.status, 200);
+  assert.equal(enriched.payload.status, "ENRICHED");
+  assert.ok(enriched.payload.evidence.length >= 4);
+
+  const prospect = await api(base, `/api/v1/vendor-candidates/${vendor.vendor_id}/prospects`, { method: "POST", role: "OPS_EDITOR", body: { priority: "HIGH", next_action_at: "2026-11-10T01:00:00.000Z", note: "先確認合作窗口" } });
+  assert.equal(prospect.status, 201);
+  assert.equal(prospect.payload.created, true);
+  const replayed = await api(base, `/api/v1/vendor-candidates/${vendor.vendor_id}/prospects`, { method: "POST", role: "OPS_EDITOR", body: { priority: "HIGH" } });
+  assert.equal(replayed.payload.created, false);
+  const prospectId = prospect.payload.prospect.prospect_id;
+  const forbiddenAssign = await api(base, `/api/v1/prospects/${prospectId}`, { method: "PATCH", role: "OPS_EDITOR", body: { owner_id: "host-amy", stage: "ASSIGNED" } });
+  assert.equal(forbiddenAssign.status, 403);
+  const assigned = await api(base, `/api/v1/prospects/${prospectId}`, { method: "PATCH", role: "OPS_MANAGER", body: { owner_id: "host-amy", stage: "ASSIGNED", priority: "URGENT", note: "本週優先接洽" } });
+  assert.equal(assigned.status, 200);
+  assert.equal(assigned.payload.owner_id, "host-amy");
+  assert.equal(assigned.payload.stage, "ASSIGNED");
+  const activity = await api(base, `/api/v1/prospects/${prospectId}/activities`, { method: "POST", role: "OPS_EDITOR", body: { action_type: "NOTE", note: "已整理公開合作資料" } });
+  assert.equal(activity.status, 201);
+  const pipeline = await api(base, "/api/v1/prospects?owner_id=host-amy", { role: "OPS_MANAGER" });
+  assert.equal(pipeline.payload.items.length, 1);
+  assert.equal(pipeline.payload.summary.stages.ASSIGNED, 1);
+
+  const health = await api(base, "/api/v1/health");
+  assert.equal(health.payload.mvp_status, "M6_PIPELINE_READY");
+  assert.equal(health.payload.market_graph.kol_product_relations, 3);
+  const audit = await api(base, "/api/v1/audit", { role: "SYSTEM_ADMIN" });
+  for (const action of ["PRODUCT_MATCH_MERGE", "PRODUCT_ALIAS_SPLIT", "VENDOR_PUBLIC_DATA_ENRICHED", "DEVELOPMENT_PROSPECT_CREATED", "DEVELOPMENT_PROSPECT_UPDATED", "DEVELOPMENT_ACTIVITY_ADDED"]) {
+    assert.ok(audit.payload.items.some(item => item.action === action), action);
+  }
+}));

@@ -52,6 +52,7 @@ try {
     });
   }
   database.rebuildLeads(context);
+  const marketGraph = database.rebuildMarketGraph(context);
   const metrics = database.discoveryMetrics();
   const feed = database.discoveryFeed();
   const precisionEligible = feed.items.filter(item => item.confidence >= 0.9 && item.product_name && item.host_name && item.source_url && (item.starts_at || item.ends_at));
@@ -61,6 +62,7 @@ try {
     database_file: databaseFile,
     collections,
     metrics,
+    market_graph: marketGraph,
     feed_summary: feed.summary,
     structural_precision_percent: structuralPrecision,
     gate_b: {
