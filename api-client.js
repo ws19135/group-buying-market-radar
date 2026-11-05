@@ -50,6 +50,7 @@ export class RadarApi {
 
   dashboard() { return this.request("/dashboard"); }
   observations(query = "") { return this.request(`/observations?page_size=200${query ? `&query=${encodeURIComponent(query)}` : ""}`); }
+  discoveryFeed(view = "latest") { return this.request(`/discovery-feed?view=${encodeURIComponent(view)}&limit=200`); }
   sources() { return this.request("/sources"); }
   leads(type = "") { return this.request(`/leads${type ? `?lead_type=${encodeURIComponent(type)}` : ""}`); }
   reviews() { return this.request("/reviews"); }
@@ -58,6 +59,7 @@ export class RadarApi {
   createObservation(body) { return this.request("/observations", { method: "POST", body }); }
   importRecords(body) { return this.request("/imports", { method: "POST", body }); }
   createSource(body) { return this.request("/sources", { method: "POST", body }); }
+  collectSource(id, body = {}) { return this.request(`/sources/${encodeURIComponent(id)}/collect`, { method: "POST", body }); }
   rebuildLeads() { return this.request("/leads/rebuild", { method: "POST", body: {} }); }
   reviewLead(id, body) { return this.request(`/leads/${encodeURIComponent(id)}/review`, { method: "POST", body }); }
   createPromotion(id) { return this.request(`/leads/${encodeURIComponent(id)}/promotion-drafts`, { method: "POST", body: {} }); }

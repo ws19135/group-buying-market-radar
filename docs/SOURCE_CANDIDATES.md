@@ -1,14 +1,14 @@
 # Milestone 2 首批公開來源候選
 
 研究日期：2026-11-04  
-狀態：`CANDIDATE_ONLY`，尚未加入 runtime allowlist、尚未執行自動採集
+狀態：前兩站已完成審查、加入 runtime allowlist 並通過 M2 UAT；其餘仍為 `CANDIDATE_ONLY`。
 
 本清單只證明頁面在研究當下可由一般瀏覽器免登入查看，並具有 MVP 所需的公開市場訊號；不代表已完成網站條款、robots.txt、頻率或正式使用核准。每個網域仍須逐站完成 [SOURCE_ALLOWLIST.md](SOURCE_ALLOWLIST.md) 的審查，才可在本機或受控環境啟用。
 
 | 優先 | 候選來源 | 可見訊號 | 適用 Adapter | 審查狀態 |
 |---:|---|---|---|---|
-| 1 | [育兒團購雷達－開團預告](https://babybuyradar.com/upcoming) | 商品、預計開團日、KOL 名稱／handle、原始來源連結 | Public Listing | Terms／robots Pending |
-| 2 | [主夫尼克團購行事曆](https://nickjufu.tw/6358/) | 大量進行中商品、結團日、商品頁連結、單一團主 | Public Listing | Terms／robots Pending |
+| 1 | [育兒團購雷達－開團預告](https://babybuyradar.com/upcoming) | 商品、預計開團日、KOL 名稱／handle、原始來源連結 | BabyBuyRadar Adapter | Enabled；UAT 36 筆 |
+| 2 | [主夫尼克團購行事曆](https://nickjufu.tw/6358/) | 大量進行中商品、結團日、商品頁連結、單一團主 | NickJufu Adapter | Enabled；UAT 115 筆 |
 | 3 | [大象發福廚房團購時間表](https://egkitchen.tw/groupbuy/) | 商品、起訖日、開團狀態、團購連結、單一團主 | Public Listing | Terms／robots Pending |
 | 4 | [LINKGOODS 公開團購頁](https://linkgoods.com/wnja148) | 團主、商品、起訖日、進行中／即將開團、下單連結 | Public Listing | Terms／robots Pending |
 | 5 | [趣透親子飯店團購](https://thitto.com/) | 飯店商品、價格、截止日、同商品多 KOL、團購詳情 | Public Listing／Product Relation | Terms／robots Pending |

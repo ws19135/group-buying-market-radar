@@ -33,7 +33,7 @@ test("health describes an isolated MVP sandbox with ERP writes disabled", async 
   const result = await api(base, "/api/v1/health");
   assert.equal(result.status, 200);
   assert.equal(result.payload.mode, "MVP_SANDBOX");
-  assert.equal(result.payload.mvp_status, "DISCOVERY_FOUNDATION");
+  assert.equal(result.payload.mvp_status, "M2_DISCOVERY_READY");
   assert.equal(result.payload.collector_runtime_available, true);
   assert.equal(result.payload.real_market_discovery_enabled, false);
   assert.equal(result.payload.live_collectors, 0);
@@ -89,6 +89,12 @@ test("approved public source can collect, preserve run metadata and replay safel
     assert.equal(collected.status, 201);
     assert.equal(collected.payload.run.created_count, 1);
     assert.equal(collected.payload.source.robots_status, "ALLOWED");
+
+    const feed = await api(base, "/api/v1/discovery-feed");
+    assert.equal(feed.status, 200);
+    assert.equal(feed.payload.summary.total, 1);
+    assert.equal(feed.payload.summary.active, 1);
+    assert.equal(feed.payload.items[0].product_name, "山海燕麥脆片 6 入組");
 
     const replayed = await api(base, `/api/v1/sources/${sourceId}/collect`, { method: "POST", role: "SYSTEM_ADMIN", body: { idempotency_key: "collect-fixture-1" } });
     assert.equal(replayed.status, 200);

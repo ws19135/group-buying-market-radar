@@ -28,17 +28,17 @@ Owner Gate A：已通過。Owner 核准公開品牌／團購頁、公開清單�
 
 ## Milestone 2 — 真實開團商品發現
 
-狀態：In Progress
+狀態：Done（2026-11-05）
 
-1. 實作至少兩種來源 Adapter。`Public Page` 與 `Public Listing` contract 已完成；真實來源 UAT 待執行。
+1. 已實作並驗證兩種真實來源 Adapter：BabyBuyRadar upcoming 與 NickJufu calendar。
 2. 擷取商品名稱、品牌、公開價格、團期、開團狀態、來源 URL、平台與觀察時間。
 3. 建立 `GroupBuyEvent`；同頁重新觀察時新增狀態歷程，不覆寫舊 Evidence。
 4. 支援人工執行與排程執行；相同 run key 可安全重播。
 5. 建立「市場發現 Feed」，顯示最新、進行中、即將結束、資料不足與來源異常。
 
-交付物：真實 Discovery Worker、Adapters、Run dashboard、至少 30 筆 UAT 資料。
+交付物：真實 Discovery Worker、2 個 Adapters、Run dashboard、Market Discovery Feed、151 筆 UAT 資料。
 
-Gate B：真實資料抽樣 precision 達 80% 以上，所有資料均可回到公開來源。
+Gate B：Passed。30 筆人工抽樣 30／30 正確（100%）；全部事件皆保留公開來源回鏈。詳見 [M2_UAT_EVIDENCE.md](M2_UAT_EVIDENCE.md)。
 
 ## Milestone 3 — 商品中心與跨來源去重
 

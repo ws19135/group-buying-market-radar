@@ -9,7 +9,7 @@ const labels = { OBSERVED: "已觀察", ACTIVE_OR_RECENT: "進行中／近期", 
 let role = getRole(location.search);
 let page = location.hash.slice(1) || "overview";
 const api = new RadarApi({ role });
-const state = { dashboard: null, observations: [], vendorLeads: [], kolLeads: [], sources: [], promotions: [], runs: [], loading: true };
+const state = { dashboard: null, observations: [], discoveryFeed: { summary: {}, items: [] }, vendorLeads: [], kolLeads: [], sources: [], promotions: [], runs: [], loading: true };
 
 const app = document.querySelector("#app");
 const roleSelect = document.querySelector("#role-select");
@@ -59,7 +59,7 @@ function updateMode() {
   const mode = document.querySelector("#sidebar-mode");
   const detail = document.querySelector("#sidebar-mode-detail");
   if (api.connected) {
-    mode.textContent = "MVP 採集底座版";
+    mode.textContent = "M2 真實採集版";
     detail.textContent = api.health?.live_collectors ? `${api.health.live_collectors} 個公開來源已啟用` : "採集器已就緒 · 等待核准來源";
     document.querySelector(".preview-banner").classList.add("sandbox");
     document.querySelector(".preview-banner strong").textContent = "公開採集 Sandbox";
@@ -80,7 +80,7 @@ function updateRolePresentation(experience) {
   document.body.dataset.accent = experience.accent;
   document.querySelector(".topbar .eyebrow").textContent = experience.eyebrow;
   const banner = document.querySelector(".preview-banner");
-  banner.querySelector("strong").textContent = api.connected ? `${experience.homeTitle} · 採集底座版` : `${experience.homeTitle} · 規格預覽`;
+  banner.querySelector("strong").textContent = api.connected ? `${experience.homeTitle} · M2 真實採集版` : `${experience.homeTitle} · 規格預覽`;
   banner.querySelector(".preview-badge").textContent = api.connected ? experience.badge : "NO WRITE";
   roleSummary.textContent = api.connected && can(role, "review")
     ? `以「${ROLES[role].label}」操作公開採集 Sandbox；核准來源後可建立真實 Observation，商品彙整與開發名單仍在後續建置。`
@@ -94,13 +94,14 @@ async function refresh() {
     state.vendorLeads = demoVendorLeads.map((item, i) => ({ lead_id: `demo-v-${i}`, lead_type: "VENDOR", canonical_name: item.name, score: item.score, stage: item.stage, metadata: { category: item.category, observation_count: item.activeGroups, evidence_count: item.evidence, last_observed_at: item.freshness } }));
     state.kolLeads = demoKolLeads.map((item, i) => ({ lead_id: `demo-k-${i}`, lead_type: "KOL", canonical_name: item.name, score: item.score, stage: item.stage, metadata: { platform: item.platform, category: item.niche, observation_count: item.cadence, public_email: item.contact } }));
     state.sources = demoSources.map((item, i) => ({ source_id: `demo-s-${i}`, name: item.name, type: item.kind, last_success_at: item.last, health_status: item.status, policy_status: "DEMO", success: item.success }));
+    state.discoveryFeed = { summary: { total: state.observations.length, active: 1, upcoming: 2, ending_soon: 1, needs_review: 0, source_errors: 0 }, items: state.observations };
     state.promotions = []; state.runs = [];
     state.dashboard = { observations: demoStats[0].value, vendor_leads: demoStats[1].value, kol_leads: demoStats[2].value, pending_review: 19, promotion_drafts: 12, sources: 8, source_health_percent: 96 };
     state.loading = false; return;
   }
   try {
-    const [dashboard, observations, vendors, kols, sources, promotions, runs] = await Promise.all([api.dashboard(), api.observations(), api.leads("VENDOR"), api.leads("KOL"), api.sources(), api.promotions(), api.runs()]);
-    Object.assign(state, { dashboard, observations: observations.items, vendorLeads: vendors.items, kolLeads: kols.items, sources: sources.items, promotions: promotions.items, runs: runs.items });
+    const [dashboard, observations, discoveryFeed, vendors, kols, sources, promotions, runs] = await Promise.all([api.dashboard(), api.observations(), api.discoveryFeed(), api.leads("VENDOR"), api.leads("KOL"), api.sources(), api.promotions(), api.runs()]);
+    Object.assign(state, { dashboard, observations: observations.items, discoveryFeed, vendorLeads: vendors.items, kolLeads: kols.items, sources: sources.items, promotions: promotions.items, runs: runs.items });
   } catch (error) { showToast(error.message, "error"); }
   finally { state.loading = false; }
 }
@@ -122,7 +123,7 @@ function render() {
 
 const views = {
   overview: () => { const d = state.dashboard || {}; const cards = [["市場觀察", d.observations ?? "—", "可追溯證據", "violet"], ["廠商線索", d.vendor_leads ?? "—", `${d.pending_review ?? "—"} 待處理`, "blue"], ["KOL 線索", d.kol_leads ?? "—", `${d.promotion_drafts ?? "—"} Promotion`, "green"], ["來源健康度", d.source_health_percent === null ? "資料不足" : `${d.source_health_percent ?? "—"}%`, `${d.sources ?? "—"} 個來源`, "amber"]]; return `${heading("今日市場脈動", api.connected ? "資料來自本機 SQLite MVP Sandbox。" : "公開頁使用合成資料；執行 npm start 後可操作。", actions("review", "建立公開 URL 觀察", "open-observation"))}<div class="grid stats">${cards.map(([name, value, delta, tone]) => `<article class="stat" style="--accent:var(--${tone});--accent-soft:var(--${tone}-soft,#f1efff)"><span class="stat-label">${name}</span><div class="stat-value">${value}</div><span class="stat-delta">${delta}</span></article>`).join("")}</div><div class="grid two-col"><article class="panel"><div class="panel-head"><h3>MVP 流程</h3><span>${api.connected ? "可操作" : "唯讀"}</span></div><div class="panel-body pipeline">${[["Observation", d.observations], ["Vendor Lead", d.vendor_leads], ["KOL Lead", d.kol_leads], ["待審核", d.pending_review], ["Promotion", d.promotion_drafts]].map(([name, value], i) => `<div class="pipeline-row"><span>${name}</span><div class="bar"><i style="width:${Math.max(value ? 8 : 0, 100 - i * 18)}%"></i></div><strong>${value ?? 0}</strong></div>`).join("")}</div></article><article class="panel"><div class="panel-head"><h3>安全邊界</h3><span>固定</span></div><div class="panel-body activity">${[["Production touched：NO", "本機資料與正式 ERP 完全分離"], ["ERP write：DISABLED", "只允許 Promotion Dry-run"], ["公開 URL：安全驗證", "阻擋 localhost、內網與 metadata IP"]].map(([a, b]) => `<div class="activity-item"><i></i><div><strong>${a}</strong><span>${b}</span></div></div>`).join("")}</div></article></div>`; },
-  observations: () => `${heading("市場觀察", "保留來源、時間、Parser、Raw hash 與 Evidence。", `<div class="button-row">${button("open-import", "review", "匯入 CSV／JSON", { primary: false })}${button("open-observation", "review", "建立觀察")}</div>`)}${toolbar("搜尋 Observation、商品、廠商或 KOL…")}${table(["Observation", "類型／名稱", "廠商／KOL", "來源", "狀態", "時間"], state.observations.map(item => `<tr><td class="id">${esc(item.observation_id)}</td><td><span class="strong">${esc(item.title)}</span><span class="subtle">${esc(item.entity_type)}</span></td><td>${esc(item.vendor_name || item.host_name || "資料不足")}</td><td><a href="${esc(item.source_url)}" target="_blank" rel="noreferrer">公開來源</a></td><td>${badge(item.status)}</td><td>${date(item.observed_at)}</td></tr>`))}`,
+  observations: () => { const feed = state.discoveryFeed || { summary: {}, items: [] }; const s = feed.summary || {}; const cards = [["真實事件", s.total ?? 0, "兩個公開來源", "violet"], ["進行中", s.active ?? 0, "可優先開發", "green"], ["即將開團", s.upcoming ?? 0, "近期市場訊號", "blue"], ["7 日內結束", s.ending_soon ?? 0, `${s.needs_review ?? 0} 筆待確認`, "amber"]]; return `${heading("市場發現 Feed", "實際公開商品、KOL／團主、團期與來源回鏈；不含 LINE 群、私人社團或登入後資料。", `<div class="button-row">${button("open-import", "review", "匯入 CSV／JSON", { primary: false })}${button("open-observation", "review", "建立觀察")}</div>`)}<div class="grid stats compact-stats">${cards.map(([name, value, detail, tone]) => `<article class="stat" style="--accent:var(--${tone});--accent-soft:var(--${tone}-soft,#f1efff)"><span class="stat-label">${name}</span><div class="stat-value">${value}</div><span class="stat-delta">${detail}</span></article>`).join("")}</div>${toolbar("搜尋商品、廠商或 KOL…")}${table(["商品／活動", "KOL／團主", "團期", "來源", "狀態", "觀察時間"], feed.items.map(item => `<tr><td><span class="strong">${esc(item.product_name || item.title)}</span><span class="subtle">${esc(item.category || item.parser_version || item.entity_type)}</span></td><td>${esc(item.host_name || "資料不足")}</td><td><span class="subtle">${item.starts_at ? `開團 ${date(item.starts_at)}` : ""}${item.starts_at && item.ends_at ? "<br>" : ""}${item.ends_at ? `結團 ${date(item.ends_at)}` : ""}</span></td><td><a href="${esc(item.source_url)}" target="_blank" rel="noreferrer">公開證據 ↗</a></td><td>${badge(item.status)}</td><td>${date(item.observed_at)}</td></tr>`), "尚未執行真實來源採集")}`; },
   vendors: () => renderLeads("VENDOR", state.vendorLeads, "廠商開發線索", "評分權重 25／20／20／20／10／5；缺值保留 UNKNOWN。"),
   kols: () => renderLeads("KOL", state.kolLeads, "KOL 合作線索", "評分權重 30／20／15／15／10／10；不推估銷售或 GMV。"),
   review: () => { const leads = [...state.vendorLeads, ...state.kolLeads].filter(item => ["DISCOVERED", "SUBMITTED", "NEEDS_MORE_DATA", "待審核", "待補資料"].includes(item.stage)); return `${heading("人工審核佇列", "所有決策保存 Actor、Reason 與 Before／After。", button("rebuild-leads", "review", "重建線索"))}<div class="notice">同名只產生 Match Candidate，不會自動合併。OPS_EDITOR 可送審；主管與管理員才可核准。</div>${table(["線索", "類型", "分數／充分度", "狀態", "最後觀察", "審核"], leads.map(item => `<tr><td><span class="strong">${esc(item.canonical_name)}</span><span class="subtle">${esc(item.lead_id)}</span></td><td>${esc(item.lead_type)}</td><td>${score(item.score, item.data_sufficiency)}</td><td>${badge(item.stage)}</td><td>${date(item.last_observed_at)}</td><td>${button("open-review", role === "OPS_EDITOR" ? "review" : "approve", "審核", { primary: false, id: item.lead_id })}</td></tr>`), "目前沒有待審線索")}`; },
@@ -161,7 +162,7 @@ function renderRoleOverview() {
         <small>${esc(role)}</small>
       </div>
     </section>
-    <div class="foundation-status"><strong>M1 已完成：公開來源治理與安全採集底座</strong><span>本機版可對核准且不需登入的公開頁執行採集並保存 Evidence；M2 將接續加入首批實際來源與至少 30 筆真實開團事件。</span></div>
+    <div class="foundation-status"><strong>M2 已完成：真實公開開團商品發現</strong><span>兩種來源 Adapter 已通過 UAT；本機可採集商品、KOL／團主、團期與公開證據。下一步為 M3 商品中心與跨來源去重。</span></div>
     ${heading("角色專屬摘要", api.connected ? "以下為本機流程基礎版與合成種子資料。" : "公開 Pages 使用合成資料，所有操作保持唯讀。", `<div class="button-row">${experience.actions.map(roleAction).join("")}</div>`)}
     <div class="grid stats">${cards.map(([name, value, detail, tone]) => `<article class="stat" style="--accent:var(--${tone});--accent-soft:var(--${tone}-soft,#f1efff)"><span class="stat-label">${esc(name)}</span><div class="stat-value">${esc(value)}</div><span class="stat-delta">${esc(detail)}</span></article>`).join("")}</div>
     <div class="grid two-col role-panels">

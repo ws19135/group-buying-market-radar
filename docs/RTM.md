@@ -1,8 +1,8 @@
-# 需求追溯矩陣（RTM）v0.3
+# 需求追溯矩陣（RTM）v0.4
 
 | 需求 | 實作 | 自動驗證 | 狀態 |
 |---|---|---|---|
-| FR-00 真實市場商品發現 | Public Page Collector + 後續至少兩種 Adapters | Collector contract tests 通過；真實資料 UAT 待執行 | In Progress / MVP Blocker |
+| FR-00 真實市場商品發現 | 2 個專用 Adapter、Discovery Feed、M2 UAT runner | 151 筆真實事件；30／30 人工抽樣正確 | M2 Done |
 | FR-01 來源登錄／匯入 | API sources、imports、source governance；UI forms | API flow、policy、CSV tests | Done |
 | FR-02 Observation／Evidence | SQLite observations、evidence | API create、duplicate、detail | Done |
 | FR-03 正規化／去重 | `domain.mjs` | deterministic、URL、name-only tests | Done |

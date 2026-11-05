@@ -5,16 +5,22 @@ import { fileURLToPath } from "node:url";
 import {
   COLLECTOR_VERSION,
   LISTING_PARSER_VERSION,
+  BABYBUYRADAR_PARSER_VERSION,
+  NICKJUFU_PARSER_VERSION,
   PublicPageCollector,
   assertSourceCanCollect,
   isAllowedByRobots,
   parsePublicPage,
   parsePublicListing,
+  parseBabyBuyRadarUpcoming,
+  parseNickJufuCalendar,
   resolveAndValidateHost,
 } from "../src/collector.mjs";
 
 const fixture = readFileSync(fileURLToPath(new URL("../fixtures/public-group-buy.html", import.meta.url)), "utf8");
 const listingFixture = readFileSync(fileURLToPath(new URL("../fixtures/public-group-buy-listing.html", import.meta.url)), "utf8");
+const babyBuyRadarFixture = readFileSync(fileURLToPath(new URL("../fixtures/babybuyradar-upcoming.html", import.meta.url)), "utf8");
+const nickJufuFixture = readFileSync(fileURLToPath(new URL("../fixtures/nickjufu-calendar.html", import.meta.url)), "utf8");
 
 function approvedSource(overrides = {}) {
   return {
@@ -52,6 +58,29 @@ test("public listing parser emits multiple product-host campaign records", () =>
   assert.equal(records[0].price_amount, "1080");
   assert.equal(records[0].parser_version, LISTING_PARSER_VERSION);
   assert.equal(records[2].status, "UPCOMING");
+});
+
+test("BabyBuyRadar adapter preserves product, KOL, date and original evidence link", () => {
+  const records = parseBabyBuyRadarUpcoming(babyBuyRadarFixture, { sourceUrl: "https://babybuyradar.com/upcoming", observedAt: "2026-11-05T01:00:00.000Z" });
+  assert.equal(records.length, 2);
+  assert.equal(records[0].product_name, "Connetix 磁力積木");
+  assert.equal(records[0].host_name, "雪莉與朵栗 (@dondon0813)");
+  assert.equal(records[0].platform_handle, "dondon0813");
+  assert.equal(records[0].source_url, "https://sheridondon.com.tw/calendar");
+  assert.equal(records[0].starts_at, "2026-11-09T16:00:00.000Z");
+  assert.equal(records[0].category, "玩具與學習");
+  assert.equal(records[0].parser_version, BABYBUYRADAR_PARSER_VERSION);
+});
+
+test("NickJufu adapter separates active end dates and upcoming start dates", () => {
+  const records = parseNickJufuCalendar(nickJufuFixture, { sourceUrl: "https://nickjufu.tw/6358/", observedAt: "2026-11-05T01:00:00.000Z" });
+  assert.equal(records.length, 3);
+  assert.equal(records[0].host_name, "主夫尼克 & 攸三");
+  assert.equal(records[0].ends_at, "2026-11-15T15:59:59.000Z");
+  assert.equal(records[0].status, "ACTIVE_OR_RECENT");
+  assert.equal(records[2].starts_at, "2026-11-05T16:00:00.000Z");
+  assert.equal(records[2].status, "UPCOMING");
+  assert.equal(records[2].parser_version, NICKJUFU_PARSER_VERSION);
 });
 
 test("robots rules honor the longest matching path", () => {

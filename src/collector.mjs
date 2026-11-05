@@ -3,7 +3,9 @@ import { isPublicAddress, nowIso, sha256, validatePublicUrl } from "./domain.mjs
 
 export const COLLECTOR_VERSION = "public-page-1.0.0";
 export const LISTING_PARSER_VERSION = "public-listing-1.0.0";
-export const COLLECTOR_USER_AGENT = "SDHMarketRadar/0.5 (+public-evidence-only)";
+export const BABYBUYRADAR_PARSER_VERSION = "babybuyradar-upcoming-1.0.0";
+export const NICKJUFU_PARSER_VERSION = "nickjufu-calendar-1.0.0";
+export const COLLECTOR_USER_AGENT = "SDHMarketRadar/0.6 (+public-evidence-only)";
 export const MAX_RESPONSE_BYTES = 1_000_000;
 export const COLLECTOR_SOURCE_TYPES = new Set([
   "PUBLIC_GROUP_BUY_PAGE",
@@ -62,7 +64,31 @@ export async function resolveAndValidateHost(hostname, resolveHost = defaultReso
 }
 
 async function defaultResolveHost(hostname) {
-  return lookup(hostname, { all: true, verbatim: true });
+  try {
+    return await lookup(hostname, { all: true, verbatim: true });
+  } catch (error) {
+    if (!["EAI_AGAIN", "ECONNREFUSED", "ETIMEOUT"].includes(error?.code)) throw error;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    try {
+      const addresses = [];
+      for (const [type, family] of [["A", 4], ["AAAA", 6]]) {
+        const response = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(hostname)}&type=${type}`, {
+          headers: { accept: "application/dns-json" },
+          signal: controller.signal,
+        });
+        if (!response.ok) continue;
+        const payload = await response.json();
+        for (const answer of payload.Answer || []) {
+          if ((answer.type === 1 && family === 4) || (answer.type === 28 && family === 6)) addresses.push({ address: answer.data, family });
+        }
+      }
+      if (addresses.length) return addresses;
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function robotsGroups(text) {
@@ -275,6 +301,139 @@ function absoluteHttpUrl(value, baseUrl) {
   }
 }
 
+function attribute(tag, name) {
+  const match = String(tag || "").match(new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i"));
+  return match ? decodeHtml(match[1]).trim() : null;
+}
+
+function classBlocks(html, tagName, className) {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*class\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*>[\\s\\S]*?<\\/${tagName}>`, "gi");
+  return [...String(html).matchAll(pattern)];
+}
+
+function lastClassTextBefore(html, offset, className) {
+  const prefix = String(html).slice(0, offset);
+  const pattern = new RegExp(`<[^>]+class\\s*=\\s*["'][^"']*\\b${className}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/[^>]+>`, "gi");
+  const matches = [...prefix.matchAll(pattern)];
+  return textContent(matches.at(-1)?.[1] || "") || null;
+}
+
+function platformHandle(value) {
+  return String(value || "").match(/@([a-z0-9._]+)/i)?.[1]?.toLowerCase() || null;
+}
+
+export function parseBabyBuyRadarUpcoming(html, { sourceUrl, observedAt = nowIso() } = {}) {
+  const validation = validatePublicUrl(sourceUrl || "");
+  if (!validation.ok) throw collectorError(validation.reason, validation.code);
+  const listingUrl = validation.normalizedUrl;
+  const records = [];
+  for (const match of classBlocks(html, "article", "upcoming-card")) {
+    const block = match[0];
+    const title = textContent(block.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i)?.[1] || "");
+    const timeTag = block.match(/<time\b[^>]*>/i)?.[0] || "";
+    const startsAt = attribute(timeTag, "datetime");
+    const hostName = textContent(block.match(/<[^>]+class\s*=\s*["'][^"']*\bsource-handle\b[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/i)?.[1] || "");
+    const hostAnchor = block.match(/<a\b[^>]*class\s*=\s*["'][^"']*\bsource-badge\b[^"']*["'][^>]*>/i)?.[0] || "";
+    const evidenceAnchor = block.match(/<a\b[^>]*class\s*=\s*["'][^"']*\bupcoming-source-link\b[^"']*["'][^>]*>/i)?.[0] || "";
+    const hostUrl = absoluteHttpUrl(attribute(hostAnchor, "href"), listingUrl);
+    const evidenceUrl = absoluteHttpUrl(attribute(evidenceAnchor, "href"), listingUrl);
+    if (!title || !startsAt || !hostName) continue;
+    const category = lastClassTextBefore(html, match.index, "upcoming-category-title") || lastClassTextBefore(html, match.index, "category-title");
+    records.push({
+      source_url: evidenceUrl || listingUrl,
+      entity_type: "CAMPAIGN",
+      title,
+      product_name: title.replace(/(?:開放)?團購(?:囉)?[！!]?$/u, "").trim() || title,
+      vendor_name: null,
+      host_name: hostName,
+      platform: hostUrl?.includes("instagram.com") ? "Instagram" : new URL(listingUrl).hostname,
+      platform_handle: platformHandle(hostName),
+      category,
+      starts_at: startsAt,
+      ends_at: null,
+      official_end_date: false,
+      price_amount: null,
+      currency: "TWD",
+      notes: `公開開團預告；清單來源 ${listingUrl}`,
+      observed_at: observedAt,
+      confidence: 0.95,
+      status: eventStatus(startsAt, null, observedAt),
+      parser_version: BABYBUYRADAR_PARSER_VERSION,
+      raw_payload: {
+        collector_version: BABYBUYRADAR_PARSER_VERSION,
+        source_kind: "BABYBUYRADAR_UPCOMING_CARD",
+        listing_url: listingUrl,
+        evidence_url: evidenceUrl,
+        host_url: hostUrl,
+      },
+    });
+  }
+  return records;
+}
+
+export function parseNickJufuCalendar(html, { sourceUrl, observedAt = nowIso() } = {}) {
+  const validation = validatePublicUrl(sourceUrl || "");
+  if (!validation.ok) throw collectorError(validation.reason, validation.code);
+  const listingUrl = validation.normalizedUrl;
+  const records = [];
+  const seen = new Set();
+  for (const match of classBlocks(html, "div", "nkgb-item")) {
+    const block = match[0];
+    const anchor = block.match(/<a\b[^>]*>[\s\S]*?<\/a>/i)?.[0] || "";
+    const title = textContent(anchor);
+    const evidenceUrl = absoluteHttpUrl(attribute(anchor, "href"), listingUrl);
+    const dateText = textContent(block.match(/<[^>]+class\s*=\s*["'][^"']*\bnkgb-date\b[^"']*["'][^>]*>([\s\S]*?)<\/[^>]+>/i)?.[1] || "");
+    if (!title || !dateText || !evidenceUrl) continue;
+    const key = `${title}\u0000${dateText}\u0000${evidenceUrl}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const dates = datesFromListingText(dateText, observedAt);
+    const category = dates.ends_at ? lastClassTextBefore(html, match.index, "nkgb-cat") : null;
+    records.push({
+      source_url: evidenceUrl,
+      entity_type: "CAMPAIGN",
+      title,
+      product_name: title.replace(/團購$/u, "").trim() || title,
+      vendor_name: null,
+      host_name: "主夫尼克 & 攸三",
+      platform: new URL(listingUrl).hostname,
+      platform_handle: "nickjufu",
+      category,
+      starts_at: dates.starts_at,
+      ends_at: dates.ends_at,
+      official_end_date: dates.official_end_date,
+      price_amount: null,
+      currency: "TWD",
+      notes: `公開團購行事曆；清單來源 ${listingUrl}`,
+      observed_at: observedAt,
+      confidence: dates.starts_at || dates.ends_at ? 0.96 : 0.72,
+      status: listingStatus(dateText, dates, observedAt),
+      parser_version: NICKJUFU_PARSER_VERSION,
+      raw_payload: {
+        collector_version: NICKJUFU_PARSER_VERSION,
+        source_kind: "NICKJUFU_CALENDAR_ITEM",
+        listing_url: listingUrl,
+        evidence_url: evidenceUrl,
+        date_text: dateText,
+      },
+    });
+  }
+  return records;
+}
+
+export function parseKnownPublicListing(html, options = {}) {
+  const validation = validatePublicUrl(options.sourceUrl || "");
+  if (!validation.ok) throw collectorError(validation.reason, validation.code);
+  const target = new URL(validation.normalizedUrl);
+  if (target.hostname === "babybuyradar.com" && target.pathname.startsWith("/upcoming")) {
+    return { records: parseBabyBuyRadarUpcoming(html, options), parser_version: BABYBUYRADAR_PARSER_VERSION };
+  }
+  if (target.hostname === "nickjufu.tw" && target.pathname.startsWith("/6358")) {
+    return { records: parseNickJufuCalendar(html, options), parser_version: NICKJUFU_PARSER_VERSION };
+  }
+  return { records: [], parser_version: null };
+}
+
 function cleanListingTitle(value) {
   return textContent(value)
     .replace(/^\s*(?:已結束|開團中|即將開團|本週新開團)\s*/g, "")
@@ -472,9 +631,10 @@ export class PublicPageCollector {
       throw collectorError("來源內容不是支援的公開 HTML 頁面", "SOURCE_CONTENT_TYPE_UNSUPPORTED", 415);
     }
     const observedAt = nowIso(this.clock);
-    const listingRecords = source.type === "PUBLIC_LISTING" ? parsePublicListing(page.text, { sourceUrl: page.url, observedAt }) : [];
-    const records = listingRecords.length ? listingRecords : parsePublicPage(page.text, { sourceUrl: page.url, observedAt });
-    const parserVersion = listingRecords.length ? LISTING_PARSER_VERSION : COLLECTOR_VERSION;
+    const knownListing = source.type === "PUBLIC_LISTING" ? parseKnownPublicListing(page.text, { sourceUrl: page.url, observedAt }) : { records: [], parser_version: null };
+    const listingRecords = source.type === "PUBLIC_LISTING" && !knownListing.records.length ? parsePublicListing(page.text, { sourceUrl: page.url, observedAt }) : [];
+    const records = knownListing.records.length ? knownListing.records : listingRecords.length ? listingRecords : parsePublicPage(page.text, { sourceUrl: page.url, observedAt });
+    const parserVersion = knownListing.records.length ? knownListing.parser_version : listingRecords.length ? LISTING_PARSER_VERSION : COLLECTOR_VERSION;
     return {
       records,
       robots_status: robotsStatus,

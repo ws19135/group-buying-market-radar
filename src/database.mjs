@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { assertSourceCanCollect, normalizeSourceGovernance } from "./collector.mjs";
+import { COLLECTOR_SOURCE_TYPES, assertSourceCanCollect, normalizeSourceGovernance } from "./collector.mjs";
 import {
   NORMALIZATION_VERSION,
   PARSER_VERSION,
@@ -326,6 +326,12 @@ export class RadarDatabase {
         AND g.access_mode='PUBLIC_NO_LOGIN' AND g.login_required=0 AND g.terms_status='REVIEWED_PUBLIC'`).get().count;
   }
 
+  seedApprovedSources(sources, context = { actorRole: "SYSTEM" }) {
+    const results = [];
+    for (const source of sources) results.push(this.createSource(source, context));
+    return { created: results.filter(item => item.created).length, total: results.length, sources: results.map(item => item.source) };
+  }
+
   markCollectionSuccess(sourceId, { robotsStatus, robotsCheckedAt } = {}, context = {}) {
     const timestamp = nowIso();
     this.transaction(() => {
@@ -481,6 +487,57 @@ export class RadarDatabase {
     const total = this.db.prepare(`SELECT COUNT(*) AS count FROM observations ${sqlWhere}`).get(params).count;
     const rows = this.db.prepare(`SELECT * FROM observations ${sqlWhere} ORDER BY observed_at DESC LIMIT @limit OFFSET @offset`).all({ ...params, limit: safePageSize, offset: (safePage - 1) * safePageSize });
     return { items: rows.map(mapObservation), total, page: safePage, page_size: safePageSize };
+  }
+
+  discoveryFeed({ view = "latest", limit = 200, now = new Date() } = {}) {
+    const publicSourceIds = new Set(this.listSources()
+      .filter(source => COLLECTOR_SOURCE_TYPES.has(source.type))
+      .map(source => source.source_id));
+    const items = this.listObservations({ pageSize: Math.max(1, Math.min(200, Number(limit) || 200)) }).items
+      .filter(item => publicSourceIds.has(item.source_id) && ["CAMPAIGN", "PRODUCT"].includes(item.entity_type));
+    const nowMs = now.getTime();
+    const sevenDays = nowMs + 7 * 86_400_000;
+    const isEndingSoon = item => {
+      const end = item.ends_at ? new Date(item.ends_at).getTime() : NaN;
+      return Number.isFinite(end) && end >= nowMs && end <= sevenDays && item.status !== "ENDED";
+    };
+    const needsReview = item => item.status === "REVIEW_REQUIRED" || !item.product_name || !item.source_url || !item.host_name || (!item.starts_at && !item.ends_at);
+    const groups = {
+      latest: items,
+      active: items.filter(item => item.status === "ACTIVE_OR_RECENT"),
+      upcoming: items.filter(item => item.status === "UPCOMING"),
+      ending_soon: items.filter(isEndingSoon),
+      needs_review: items.filter(needsReview),
+    };
+    const sourceErrors = this.db.prepare("SELECT COUNT(*) AS count FROM sources WHERE active=1 AND health_status='ERROR'").get().count;
+    return {
+      view: groups[view] ? view : "latest",
+      summary: {
+        total: items.length,
+        active: groups.active.length,
+        upcoming: groups.upcoming.length,
+        ending_soon: groups.ending_soon.length,
+        needs_review: groups.needs_review.length,
+        source_errors: sourceErrors,
+      },
+      items: groups[view] || groups.latest,
+    };
+  }
+
+  discoveryMetrics() {
+    const liveSources = this.liveCollectorCount();
+    const successfulSources = this.db.prepare(`SELECT COUNT(DISTINCT r.source_id) AS count FROM collection_runs r
+      JOIN sources s ON s.source_id=r.source_id
+      WHERE r.status IN ('COMPLETED','PARTIAL') AND s.type='PUBLIC_LISTING'`).get().count;
+    const realEvents = this.db.prepare(`SELECT COUNT(*) AS count FROM observations o
+      JOIN sources s ON s.source_id=o.source_id
+      WHERE o.entity_type='CAMPAIGN' AND s.type='PUBLIC_LISTING'`).get().count;
+    return {
+      live_sources: liveSources,
+      successful_sources: successfulSources,
+      real_market_events: realEvents,
+      gate_b_data_volume_passed: successfulSources >= 2 && realEvents >= 30,
+    };
   }
 
   getObservation(id) {
@@ -659,6 +716,8 @@ export class RadarDatabase {
     const scalar = sql => this.db.prepare(sql).get().count;
     const sources = scalar("SELECT COUNT(*) AS count FROM sources WHERE active = 1");
     const healthy = scalar("SELECT COUNT(*) AS count FROM sources WHERE active = 1 AND health_status = 'HEALTHY'");
+    const discovery = this.discoveryFeed();
+    const metrics = this.discoveryMetrics();
     return {
       observations: scalar("SELECT COUNT(*) AS count FROM observations"),
       vendor_leads: scalar("SELECT COUNT(*) AS count FROM leads WHERE lead_type = 'VENDOR'"),
@@ -668,6 +727,11 @@ export class RadarDatabase {
       sources,
       live_collectors: this.liveCollectorCount(),
       source_health_percent: sources ? Math.round(healthy / sources * 100) : null,
+      real_market_events: metrics.real_market_events,
+      active_events: discovery.summary.active,
+      upcoming_events: discovery.summary.upcoming,
+      ending_soon_events: discovery.summary.ending_soon,
+      needs_review_events: discovery.summary.needs_review,
     };
   }
 

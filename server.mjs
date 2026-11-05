@@ -1,10 +1,10 @@
 import { createServer } from "node:http";
 import { readFileSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RadarDatabase } from "./src/database.mjs";
 import { PublicPageCollector } from "./src/collector.mjs";
+import { M2_APPROVED_SOURCES } from "./src/m2-sources.mjs";
 import { LEAD_TYPES, REVIEW_ACTIONS, newId, parseImportPayload, sha256, validatePublicUrl } from "./src/domain.mjs";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
@@ -85,7 +85,10 @@ export function createRadarServer({
   collector = new PublicPageCollector(),
 } = {}) {
   const database = new RadarDatabase(databaseFile);
-  if (seedDemo) database.seedDemo();
+  if (seedDemo) {
+    database.seedDemo();
+    database.seedApprovedSources(M2_APPROVED_SOURCES);
+  }
 
   const server = createServer(async (request, response) => {
     const requestId = String(request.headers["x-request-id"] || newId("req"));
@@ -99,7 +102,8 @@ export function createRadarServer({
         }
         if (request.method === "GET" && url.pathname === "/api/v1/health") {
           const liveCollectors = database.liveCollectorCount();
-          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", mvp_status: "DISCOVERY_FOUNDATION", collector_runtime_available: true, real_market_discovery_enabled: liveCollectors > 0, live_collectors: liveCollectors, write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
+          const discovery = database.discoveryMetrics();
+          return sendJson(response, 200, { status: "ok", mode: "MVP_SANDBOX", mvp_status: discovery.gate_b_data_volume_passed ? "M2_DISCOVERY_VALIDATED" : "M2_DISCOVERY_READY", collector_runtime_available: true, real_market_discovery_enabled: liveCollectors > 0, live_collectors: liveCollectors, real_market_events: discovery.real_market_events, successful_discovery_sources: discovery.successful_sources, gate_b_data_volume_passed: discovery.gate_b_data_volume_passed, write_enabled: writeEnabled, database: "sqlite", production_touched: false, erp_write_enabled: false }, requestId);
         }
         if (request.method === "GET" && url.pathname === "/api/v1/dashboard") {
           requireCapability(context, "view");
@@ -160,6 +164,10 @@ export function createRadarServer({
         if (request.method === "GET" && url.pathname === "/api/v1/observations") {
           requireCapability(context, "view");
           return sendJson(response, 200, database.listObservations({ query: url.searchParams.get("query") || "", entityType: url.searchParams.get("entity_type") || "", status: url.searchParams.get("status") || "", page: url.searchParams.get("page") || 1, pageSize: url.searchParams.get("page_size") || 50 }), requestId);
+        }
+        if (request.method === "GET" && url.pathname === "/api/v1/discovery-feed") {
+          requireCapability(context, "view");
+          return sendJson(response, 200, database.discoveryFeed({ view: url.searchParams.get("view") || "latest", limit: url.searchParams.get("limit") || 200 }), requestId);
         }
         if (request.method === "POST" && url.pathname === "/api/v1/observations") {
           requireCapability(context, "review");
@@ -259,10 +267,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const index = process.argv.indexOf(name);
     return index >= 0 ? process.argv[index + 1] : undefined;
   };
-  const managedPreview = process.argv.includes("--strictPort");
   const port = Number(argumentValue("--port") || process.env.PORT || 4173);
   const host = argumentValue("--host") || process.env.HOST || (process.env.SITES_MANAGED_LINUX_CONTAINER === "1" ? "0.0.0.0" : "127.0.0.1");
-  const databaseFile = process.env.MR_DATABASE_FILE || (managedPreview ? join(tmpdir(), "market-radar-preview.sqlite") : DEFAULT_DB);
+  const databaseFile = process.env.MR_DATABASE_FILE || DEFAULT_DB;
   const server = createRadarServer({ databaseFile });
   server.listen(port, host, () => {
     console.log(`Market Radar MVP Sandbox: http://${host}:${port}`);

@@ -1,13 +1,13 @@
 # MVP Sandbox 驗證紀錄
 
-日期：2026-11-04
+日期：2026-11-05
 
-> 本文件證明 Foundation 與 M1 公開採集底座通過，不代表重新定義後的完整 MVP 通過。首批真實來源 UAT、商品－KOL 關聯、Vendor enrichment 與預計開發名單尚無完成證據。
+> 本文件證明 Foundation、M1 與 M2 真實市場發現通過，不代表完整 MVP 通過。商品跨來源去重、Vendor enrichment、商品－KOL 關聯與預計開發名單尚未完成。
 
 ## 自動驗證
 
 - `npm run check`：syntax check 通過。
-- Node test runner：23 tests、23 pass、0 fail。
+- Node test runner：25 tests、25 pass、0 fail（最終數量以 CI 為準）。
 - 覆蓋：RBAC、公開唯讀、來源治理、robots、DNS／SSRF、公開頁 JSON-LD 解析、URL／私有網段防護、正規化、fingerprint、CSV、同名不合併、UNKNOWN 評分、Collector Run 冪等、稽核、Dry-run、禁止 hard delete。
 
 ## 瀏覽器驗證
@@ -24,7 +24,16 @@
 - 首屏已做桌面視覺檢查；狀態文字、角色、Production／ERP 安全邊界均清楚可見。
 - 應用頁無 JavaScript error；檢查工具只回報瀏覽器 extension 自身 metadata error，非本站程式。
 
+## M2 真實來源驗證
+
+- 2026-11-05 09:23（台灣時間）端到端執行 `npm run m2:collect`。
+- 育兒團購雷達：36 筆、0 errors、robots `ALLOWED`。
+- 主夫尼克公開團購行事曆：115 筆、0 errors、robots `ALLOWED`。
+- 合計 151 筆；70 進行中、73 即將開團、21 筆 7 日內結束、8 筆因日期不完整進入人工確認。
+- 30 筆人工抽樣全部正確，precision 100%；自動結構完整率 94.7%。
+- 詳細證據見 [M2_UAT_EVIDENCE.md](M2_UAT_EVIDENCE.md)。
+
 ## 邊界聲明
 
-驗證使用合成資料與 ERP fixture。沒有連線或寫入正式 ERP，也沒有修改 `group-buying-operations`。正式資料量 10,000 筆／2 秒目標尚未做 benchmark，保留至正式化階段。
+M2 只讀取免登入公開網頁並寫入隔離的本機 SQLite；ERP 仍只使用 fixture。沒有連線或寫入正式 ERP，也沒有修改 `group-buying-operations`。正式資料量 10,000 筆／2 秒目標尚未做 benchmark，保留至正式化階段。
 

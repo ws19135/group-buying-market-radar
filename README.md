@@ -1,4 +1,4 @@
-# Group Buying Market Radar — MVP Foundation
+# Group Buying Market Radar — M2 Real Discovery
 
 SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11-04 重新定義 MVP：系統的第一個驗收閘門必須能實際發現市場上正在開團的商品；再由商品串出廠商公開資料、正在開團的 KOL／團主，以及可由開團人員加入與指派的預計開發名單。
 
@@ -6,11 +6,11 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 
 ## 目前狀態
 
-`MVP_STATUS=DISCOVERY_FOUNDATION`：v0.5 已完成公開來源治理與安全 Collector runtime，可在本機對逐站核准、不需登入的公開頁執行採集並保存 Evidence／Run／Audit。**目前 Repository 尚未登記真實網域，也尚未完成 30 筆真實開團事件 UAT，因此仍不符合完整 MVP 出場條件。**
+`MVP_STATUS=M2_DISCOVERY_VALIDATED`：v0.6 已接入兩個免登入公開來源與兩種專用 Adapter。2026-11-05 真實 UAT 擷取 151 筆開團事件，兩站皆 0 row error，30 筆人工抽樣 precision 為 100%，通過 Milestone 2 Gate B。**完整 MVP 尚未完成；M3～M8 的商品去重、廠商補充、KOL 關聯、預計開發名單與內部部署仍待建置。**
 
 | 能力 | 狀態 |
 |---|---|
-| 真實發現市場上正在開團的商品 | In progress：Collector 已完成；真實來源 UAT 尚未執行 |
+| 真實發現市場上正在開團的商品 | M2 Done：2 個來源、151 筆事件、Gate B 通過 |
 | 以商品彙整所有開團 KOL／團主 | Not implemented |
 | 自動補充廠商公開資料與證據 | Not implemented |
 | 加入、指派及追蹤預計開發名單 | Not implemented |
@@ -23,7 +23,7 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 | 模式 | 用途 | 寫入範圍 |
 |---|---|---|
 | GitHub Pages 公開預覽 | 免登入展示六套角色工作台與合成資料 | 完全唯讀，沒有 API、資料庫或秘密 |
-| 本機流程基礎版 | 已完成流程的操作與 UAT | 只寫入本機 SQLite；ERP 僅讀取 fixture 並執行 Dry-run |
+| 本機 M2 真實採集版 | 真實公開來源採集與既有流程 UAT | 只寫入本機 SQLite；ERP 僅讀取 fixture 並執行 Dry-run |
 
 公開預覽：<https://ws19135.github.io/group-buying-market-radar/>
 
@@ -43,6 +43,9 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 - 安全公開頁 Collector：DNS／SSRF、robots.txt、redirect、timeout、retry 與 1 MB 上限
 - Schema.org Product／Event 與 Open Graph fallback 解析；低信心候選強制人工確認
 - Collector Run 保存目標 URL、parser version、content hash、計數與錯誤；可冪等重播
+- BabyBuyRadar 開團預告 Adapter：商品、公開 KOL／handle、預計開團日與原始來源回鏈
+- NickJufu 團購行事曆 Adapter：商品、團主、開團／結團日期、品類與文章回鏈
+- 市場發現 Feed：最新、進行中、即將開團、7 日內結束、待確認與來源異常統計
 
 ## 資料流程
 
@@ -54,10 +57,11 @@ SDH 團購 ERP 的「團購市場情報與開發雷達」。Owner 已於 2026-11
 
 ```bash
 npm run check
+npm run m2:collect
 npm start
 ```
 
-開啟 <http://localhost:4173>。首次啟動會建立 `.data/market-radar.sqlite` 並載入合成示範資料。可用 query string 指定角色：
+`npm run m2:collect` 會從兩個核准公開來源更新本機 SQLite，並輸出 Gate B 報告；接著執行 `npm start`，開啟 <http://localhost:4173>。首次啟動會建立 `.data/market-radar.sqlite`、登記兩個核准來源並載入合成示範資料。可用 query string 指定角色：
 
 ```text
 http://localhost:4173/?role=OPS_EDITOR#observations
@@ -88,6 +92,7 @@ http://localhost:4173/?role=OPS_EDITOR#observations
 - [完整建置步驟](docs/IMPLEMENTATION_PLAN.md)
 - [公開來源 Allowlist 與治理規則](docs/SOURCE_ALLOWLIST.md)
 - [Milestone 2 首批公開來源候選](docs/SOURCE_CANDIDATES.md)
+- [Milestone 2 真實 UAT 證據](docs/M2_UAT_EVIDENCE.md)
 - [Collector 契約](docs/COLLECTOR_CONTRACT.md)
 - [SRS 與驗收狀態](docs/SRS.md)
 - [系統架構](docs/SAD.md)

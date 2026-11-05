@@ -1,7 +1,7 @@
 # 公開來源 Allowlist 與治理規則
 
 版本：v1.0  
-日期：2026-11-04
+日期：2026-11-05
 
 ## Owner 已核准的來源範圍
 
@@ -10,7 +10,7 @@
 | `PUBLIC_GROUP_BUY_PAGE` | 不需登入即可查看的單一公開開團頁 | 可，經逐站審查後啟用 | Approved scope |
 | `PUBLIC_BRAND_CAMPAIGN` | 品牌官網或公開活動頁 | 可，經逐站審查後啟用 | Approved scope |
 | `PUBLIC_LISTING` | 公開團購清單、日曆或索引頁 | 可，經逐站審查後啟用 | Approved scope |
-| `WEB_SEARCH_RESULT` | 開放网頁搜尋結果或合法資料 API 的結果 | 只允許匯入；API Adapter 尚未建置 | Approved scope |
+| `WEB_SEARCH_RESULT` | 開放網頁搜尋結果或合法資料 API 的結果 | 只允許匯入；API Adapter 尚未建置 | Approved scope |
 | LINE 群、私人社團、登入後頁面 | 任何需要帳號、邀請、會員或繞過存取限制的內容 | 不可 | Blocked |
 
 核准的是「來源類型」，不是任意網域。每一個實際 URL 仍須分別登記並完成政策審查，系統才會執行採集。
@@ -48,9 +48,14 @@
 - 重新導向不得離開已核准 hostname。
 - timeout 10 秒、最多一次重試、最多三次同網域重新導向。
 - 單次回應上限 1 MB；僅解析公開 HTML。
-- 使用可識別 User-Agent：`SDHMarketRadar/0.5 (+public-evidence-only)`。
+- 使用可識別 User-Agent：`SDHMarketRadar/0.6 (+public-evidence-only)`。
 - 不嘗試登入、解驗證碼、繞過 paywall、讀取 Cookie 或模擬私人帳號。
 
 ## 目前實際網域
 
-目前 Repository 不預載任何真實網域，也不把測試 fixture 當成真實市場資料。首批真實 URL 將在 Milestone 2 逐站審查後加入受控環境；GitHub Pages 繼續只顯示合成資料。
+| 來源 | 目標 URL | 公開性／robots 結論 | 頻率 | 狀態 |
+|---|---|---|---:|---|
+| 育兒團購雷達－開團預告 | <https://babybuyradar.com/upcoming> | 免登入；`Allow: /`，只排除 `/api/` | 1,440 分鐘 | Enabled |
+| 主夫尼克公開團購行事曆 | <https://nickjufu.tw/6358/> | 免登入；一般 User-agent `Allow: /`，Content-Signal `search=yes,use=reference` | 1,440 分鐘 | Enabled |
+
+兩站只保存商品標題、公開團期、公開 KOL／團主與原始回鏈，不複製文章全文。GitHub Pages 繼續只顯示合成資料；真實採集只在本機／受控後端執行。

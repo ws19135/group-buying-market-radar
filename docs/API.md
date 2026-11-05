@@ -8,11 +8,12 @@ Base path：`/api/v1`。所有回應為 JSON；mutation 僅供本機 Sandbox。�
 |---|---|---|---|
 | GET | `/health` | — | 模式、MVP 狀態、真實 Collector 數量、SQLite、Sandbox／ERP 寫入邊界 |
 
-`/health` 目前回傳 `mvp_status: "DISCOVERY_FOUNDATION"` 與 `collector_runtime_available: true`。`live_collectors` 依完成治理且已啟用的來源動態計算；`real_market_discovery_enabled` 只有在至少一個來源啟用時才為 `true`。這不等於完整 MVP 已通過，完整狀態仍須完成 30 筆真實事件 UAT。
+`/health` 依資料庫狀態回傳 `mvp_status: "M2_DISCOVERY_READY"` 或 `"M2_DISCOVERY_VALIDATED"`。後者要求至少 2 個成功來源及 30 筆真實 `CAMPAIGN`；完整 MVP 仍須完成 M3～M8。
 | GET | `/dashboard` | view | 儀表板統計 |
 | GET／POST | `/sources` | view／source_admin | 來源列表／建立公開來源 |
 | POST | `/sources/:id/collect` | source_admin | 執行核准公開來源 Collector；保存 Run／Evidence／Audit |
 | GET／POST | `/observations` | view／review | 查詢／建立 Observation |
+| GET | `/discovery-feed?view=latest|active|upcoming|ending_soon|needs_review` | view | 真實市場 Feed 與分類統計 |
 | GET | `/observations/:id` | view | Evidence 與 match candidates |
 | POST | `/imports` | review | CSV／JSON 匯入 |
 | GET | `/runs` | view | Collection run 與 row errors |
